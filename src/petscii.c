@@ -1,6 +1,7 @@
 #include "petscii.h"
 
 #include "screen.h"
+#include "sound.h"
 
 static uint8_t reverse;
 
@@ -130,8 +131,11 @@ void petscii_feed(uint8_t c) {
     case 0x8E: /* upper case and graphics */
         screen_charset(0);
         break;
+    case 0x07: /* bell */
+        bell_ring();
+        break;
     default:
-        /* the rest (bell, the charset lock, function keys) draw nothing */
+        /* the rest (the charset lock, function keys) draw nothing */
         break;
     }
 }

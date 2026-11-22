@@ -11,6 +11,8 @@
 #include "keys.h"
 #include "petscii.h"
 #include "screen.h"
+#include "settings.h"
+#include "sound.h"
 #include "uart.h"
 #include "ui.h"
 
@@ -25,6 +27,11 @@ static uint8_t online;
 static uint8_t help;
 static unsigned long online_since; /* jiffies */
 static unsigned long next_tick;    /* the status line's next redraw */
+
+/* a blinking cursor: shown or not, and when it next changes */
+#define BLINK_JIFFIES 20
+static uint8_t blink_on;
+static unsigned long next_blink;
 
 /* the board called last: its name for the status line, and whether the
  * call's still to connect (and be counted) */
@@ -82,7 +89,7 @@ static void status(void) {
 
     if (screen_cols == 40) {
         if (help) {
-            screen_status(" Alt+ D dir  E mode  H hang up  X quit");
+            screen_status(" Alt+ D dir E mode H hang S set X quit");
             return;
         }
         *p++ = ' ';
@@ -91,8 +98,8 @@ static void status(void) {
         p = put_online(p);
     } else {
         if (help) {
-            screen_status(" Alt-D directory  Alt-E ANSI/PETSCII  Alt-H hang up  Alt-X quit"
-                          "  Alt-Z back");
+            screen_status(" Alt+  D directory  E ANSI/PETSCII  H hang up  S settings  X quit"
+                          "  Z back");
             return;
         }
         p = put_text(p, " busterm \x10 ");
@@ -101,11 +108,22 @@ static void status(void) {
         p = put_online(p);
         /* 59 columns so far: the clock at 61, help at 68 */
     }
-    p = put_text(p, "  ");
     cx16_k_clock_get_date_time(&now);
-    p = put_2digits(p, now.hour);
-    *p++ = ':';
-    p = put_2digits(p, now.min);
+    if (settings[SET_CLOCK]) {
+        /* 12 hours: " 3:24p", in the same 7 columns */
+        uint8_t h = now.hour % 12 ? now.hour % 12 : 12;
+        *p++ = ' ';
+        *p++ = h >= 10 ? '1' : ' ';
+        *p++ = '0' + h % 10;
+        *p++ = ':';
+        p = put_2digits(p, now.min);
+        *p++ = now.hour < 12 ? 'a' : 'p';
+    } else {
+        p = put_text(p, "  ");
+        p = put_2digits(p, now.hour);
+        *p++ = ':';
+        p = put_2digits(p, now.min);
+    }
     if (screen_cols != 40) {
         p = put_text(p, "  Alt-Z help");
     }
@@ -273,7 +291,7 @@ static void send_key(uint8_t k) {
         uart_put(0x0D);
         break;
     case KEY_DEL:
-        uart_put(0x08);
+        uart_put(settings[SET_BACKSPACE] ? 0x7F : 0x08);
         break;
     case KEY_UP:
         uart_puts("\x1b[A");
@@ -301,6 +319,22 @@ static void copy(char *to, const char *from, uint8_t room) {
         *to++ = *from++;
     }
     *to = 0;
+}
+
+/* what's typed, shown here too (local echo) */
+static void echo(uint8_t k) {
+    if (screen_petscii) {
+        petscii_feed(k);
+    } else if (k == KEY_RETURN) {
+        ansi_feed(0x0D);
+        ansi_feed(0x0A);
+    } else if (k == KEY_DEL) {
+        ansi_feed(0x08);
+        ansi_feed(' ');
+        ansi_feed(0x08);
+    } else if (k >= 0x20 && k < 0x7F) {
+        ansi_feed(k);
+    }
 }
 
 /* the screen made ANSI's, if it's PETSCII's */
@@ -408,6 +442,11 @@ static uint8_t command(uint8_t c) {
     case 'e':
         next_emulation();
         break;
+    case 's':
+        ansi_screen();
+        settings_window();
+        status();
+        break;
     case 'h':
         if (online || calling) {
             hang_up();
@@ -429,12 +468,13 @@ static uint8_t command(uint8_t c) {
 
 int main(void) {
     uint8_t bank = RAM_BANK;
-    RAM_BANK = BANK_WINDOWS;
+    RAM_BANK = BANK_DATA;
     screen_ansi();
     ansi_reset();
     uart_init(UART_DIVISOR_115200);
     keys_init();
     dir_load();
+    settings_load();
 
     print("\x1b[1;36mbusterm " VERSION "\x1b[0m  a BBS terminal for the Commander X16\r\n\r\n");
     print("The modem is ready for commands. To call a board:\r\n\r\n");
@@ -443,7 +483,9 @@ int main(void) {
     online = uart_carrier();
     online_since = cx16_k_rdtim();
     status();
-    directory();
+    if (!settings[SET_START]) {
+        directory();
+    }
 
     for (;;) {
         uint8_t k;
@@ -472,8 +514,13 @@ int main(void) {
                 directory();
             } else {
                 send_key(k);
+                if (online && settings[SET_ECHO]) {
+                    screen_cursor_hide();
+                    echo(k);
+                }
             }
         }
+        bell_tick();
 
         if (!uart_carrier() != !online) {
             online = uart_carrier();
@@ -498,7 +545,19 @@ int main(void) {
             }
         }
         if (!uart_ready()) {
-            screen_cursor_show();
+            if (!settings[SET_CURSOR]) {
+                screen_cursor_show();
+            } else {
+                if (cx16_k_rdtim() >= next_blink) {
+                    next_blink = cx16_k_rdtim() + BLINK_JIFFIES;
+                    blink_on = !blink_on;
+                }
+                if (blink_on) {
+                    screen_cursor_show();
+                } else {
+                    screen_cursor_hide();
+                }
+            }
         }
     }
 

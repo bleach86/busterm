@@ -5,8 +5,8 @@
 #include "screen.h"
 #include "vera.h"
 
-/* what's under the open windows, theirs one after another, in banked RAM
- * (bank BANK_WINDOWS, busterm's usual bank) */
+/* what's under the open windows, theirs one after another, in banked RAM:
+ * bank BANK_WINDOWS, picked only while it's used */
 #define KEEP_BYTES BANK_SIZE
 #define keep BANKED
 static uint16_t kept;
@@ -83,17 +83,20 @@ uint8_t ui_open(window_t *w, uint8_t row, uint8_t col, uint8_t height, uint8_t w
                 const char *title) {
     /* the window and its shadow, a cell right and a row down */
     uint16_t need = (uint16_t)(height + 1) * (width + 1) * 2 + 4;
-    uint8_t r, *to;
+    uint8_t r, *to, bank;
     if (kept + need > KEEP_BYTES) {
         return 0;
     }
     screen_cursor_hide();
     w->row = row, w->col = col, w->height = height, w->width = width;
+    bank = RAM_BANK;
+    RAM_BANK = BANK_WINDOWS;
     to = keep + kept;
     for (r = 0; r <= height; ++r) {
         cells_out(row + r, col, width + 1, to);
         to += (width + 1) * 2;
     }
+    RAM_BANK = bank;
     kept += need;
 
     /* the frame */
@@ -126,14 +129,16 @@ uint8_t ui_open(window_t *w, uint8_t row, uint8_t col, uint8_t height, uint8_t w
 
 void ui_close(window_t *w) {
     uint16_t need = (uint16_t)(w->height + 1) * (w->width + 1) * 2 + 4;
-    uint8_t r;
+    uint8_t r, bank = RAM_BANK;
     const uint8_t *from;
     kept -= need;
+    RAM_BANK = BANK_WINDOWS;
     from = keep + kept;
     for (r = 0; r <= w->height; ++r) {
         cells_in(w->row + r, w->col, w->width + 1, from);
         from += (w->width + 1) * 2;
     }
+    RAM_BANK = bank;
     screen_forget();
 }
 

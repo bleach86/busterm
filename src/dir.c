@@ -4,19 +4,15 @@
 #include <cx16.h>
 
 #include "banks.h"
+#include "files.h"
 #include "keys.h"
 #include "ui.h"
 
-#define SD 8
-#define LFN 2
-/* the files' text, in banked RAM: bank BANK_FILES, picked while it's used */
-#define FILE_BYTES BANK_SIZE
-#define file ((char *)BANKED)
-
-board_t dir[DIR_MAX];
 uint8_t dir_count;
-call_t recent[RECENT_MAX];
 uint8_t recent_count;
+
+/* a line of the files, as it's read or written */
+static char line[128];
 
 static const char *const emu_names[] = {"ANSI", "PETSCII", "ASCII"};
 
@@ -78,68 +74,6 @@ static void now(char *when) {
 
 /* ---- the files ------------------------------------------------------- */
 
-/* The SD card's files, through the ROM's own routines (llvm-mos has no
- * cbm_open and cbm_read yet). */
-
-#define ST_EOF 0x40
-#define CMD 15
-
-/* the drive's status: "00, OK" */
-static uint8_t drive_ok(void) {
-    uint8_t a, b;
-    cbm_k_setlfs(CMD, SD, CMD);
-    cbm_k_setnam("");
-    if (cbm_k_open()) {
-        cbm_k_close(CMD);
-        return 0;
-    }
-    cbm_k_chkin(CMD);
-    a = cbm_k_chrin();
-    b = cbm_k_chrin();
-    while (!(cbm_k_readst() & ST_EOF) && cbm_k_chrin() != 0x0D) {
-    }
-    cbm_k_clrch();
-    cbm_k_close(CMD);
-    return a == '0' && b == '0';
-}
-
-/* the file read into |file|, its length; 0 if it isn't there */
-static uint16_t read_file(const char *name) {
-    uint16_t n = 0;
-    cbm_k_setlfs(LFN, SD, 2);
-    cbm_k_setnam(name);
-    if (!cbm_k_open() && drive_ok() && !cbm_k_chkin(LFN)) {
-        while (n < FILE_BYTES - 1) {
-            uint8_t c = cbm_k_chrin();
-            uint8_t st = cbm_k_readst();
-            if (st & ~ST_EOF) {
-                break;
-            }
-            file[n++] = (char)c;
-            if (st & ST_EOF) {
-                break;
-            }
-        }
-    }
-    cbm_k_clrch();
-    cbm_k_close(LFN);
-    file[n] = 0;
-    return n;
-}
-
-static void write_file(const char *name, uint16_t n) {
-    uint16_t i;
-    cbm_k_setlfs(LFN, SD, 2);
-    cbm_k_setnam(name);
-    if (!cbm_k_open() && !cbm_k_chkout(LFN)) {
-        for (i = 0; i < n; ++i) {
-            cbm_k_chrout((uint8_t)file[i]);
-        }
-    }
-    cbm_k_clrch();
-    cbm_k_close(LFN);
-}
-
 /* the fields of the line at |p|, split at '|', up to |most|; the line's
  * end returned */
 static char *fields(char *p, char **f, uint8_t most, uint8_t *count) {
@@ -178,23 +112,24 @@ static uint8_t emu_of(const char *s) {
 }
 
 void dir_load(void) {
-    char *p, *f[6];
+    char *f[6];
     uint8_t n;
 
-    RAM_BANK = BANK_FILES;
     dir_count = 0;
-    read_file("BUSTERM.DIR,S,R");
-    for (p = file; *p && dir_count < DIR_MAX;) {
-        p = fields(p, f, 6, &n);
-        if (n >= 2 && *f[0]) {
-            board_t *b = &dir[dir_count++];
-            copy(b->name, f[0], sizeof b->name);
-            copy(b->addr, f[1], sizeof b->addr);
-            b->emu = n > 2 ? emu_of(f[2]) : EMU_ANSI;
-            b->cols = n > 3 && number(f[3]) == 40 ? 40 : 80;
-            b->calls = n > 4 ? number(f[4]) : 0;
-            copy(b->last, n > 5 ? f[5] : "", sizeof b->last);
+    if (file_open("BUSTERM.DIR,S,R")) {
+        while (dir_count < DIR_MAX && file_line(line, sizeof line)) {
+            fields(line, f, 6, &n);
+            if (n >= 2 && *f[0]) {
+                board_t *b = &dir[dir_count++];
+                copy(b->name, f[0], sizeof b->name);
+                copy(b->addr, f[1], sizeof b->addr);
+                b->emu = n > 2 ? emu_of(f[2]) : EMU_ANSI;
+                b->cols = n > 3 && number(f[3]) == 40 ? 40 : 80;
+                b->calls = n > 4 ? number(f[4]) : 0;
+                copy(b->last, n > 5 ? f[5] : "", sizeof b->last);
+            }
         }
+        file_close();
     }
     if (!dir_count) {
         /* a first run: a board to start with */
@@ -205,43 +140,46 @@ void dir_load(void) {
     }
 
     recent_count = 0;
-    read_file("BUSTERM.RCT,S,R");
-    for (p = file; *p && recent_count < RECENT_MAX;) {
-        p = fields(p, f, 3, &n);
-        if (n == 3 && *f[1]) {
-            call_t *c = &recent[recent_count++];
-            copy(c->name, f[0], sizeof c->name);
-            copy(c->addr, f[1], sizeof c->addr);
-            copy(c->when, f[2], sizeof c->when);
+    if (file_open("BUSTERM.RCT,S,R")) {
+        while (recent_count < RECENT_MAX && file_line(line, sizeof line)) {
+            fields(line, f, 3, &n);
+            if (n == 3 && *f[1]) {
+                call_t *c = &recent[recent_count++];
+                copy(c->name, f[0], sizeof c->name);
+                copy(c->addr, f[1], sizeof c->addr);
+                copy(c->when, f[2], sizeof c->when);
+            }
         }
+        file_close();
     }
-    RAM_BANK = BANK_WINDOWS;
 }
 
 void dir_save(void) {
-    char *p = file;
+    char *p;
     uint8_t i;
-    RAM_BANK = BANK_FILES;
-    for (i = 0; i < dir_count; ++i) {
-        board_t *b = &dir[i];
-        p = put(p, b->name), *p++ = '|';
-        p = put(p, b->addr), *p++ = '|';
-        p = put(p, emu_names[b->emu]), *p++ = '|';
-        p = put_number(p, b->cols), *p++ = '|';
-        p = put_number(p, b->calls), *p++ = '|';
-        p = put(p, b->last), *p++ = '\n';
+    if (file_create("@:BUSTERM.DIR,S,W")) {
+        for (i = 0; i < dir_count; ++i) {
+            board_t *b = &dir[i];
+            p = put(line, b->name), *p++ = '|';
+            p = put(p, b->addr), *p++ = '|';
+            p = put(p, emu_names[b->emu]), *p++ = '|';
+            p = put_number(p, b->cols), *p++ = '|';
+            p = put_number(p, b->calls), *p++ = '|';
+            p = put(p, b->last), *p++ = '\n', *p = 0;
+            file_put(line);
+        }
+        file_close();
     }
-    write_file("@:BUSTERM.DIR,S,W", (uint16_t)(p - file));
-
-    p = file;
-    for (i = 0; i < recent_count; ++i) {
-        call_t *c = &recent[i];
-        p = put(p, c->name), *p++ = '|';
-        p = put(p, c->addr), *p++ = '|';
-        p = put(p, c->when), *p++ = '\n';
+    if (file_create("@:BUSTERM.RCT,S,W")) {
+        for (i = 0; i < recent_count; ++i) {
+            call_t *c = &recent[i];
+            p = put(line, c->name), *p++ = '|';
+            p = put(p, c->addr), *p++ = '|';
+            p = put(p, c->when), *p++ = '\n', *p = 0;
+            file_put(line);
+        }
+        file_close();
     }
-    write_file("@:BUSTERM.RCT,S,W", (uint16_t)(p - file));
-    RAM_BANK = BANK_WINDOWS;
 }
 
 void dir_called(const char *name, const char *addr) {

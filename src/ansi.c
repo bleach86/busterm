@@ -1,6 +1,7 @@
 #include "ansi.h"
 
 #include "screen.h"
+#include "sound.h"
 #include "uart.h"
 
 /* letters as numbers: what comes from the modem is ASCII, whatever the
@@ -260,8 +261,10 @@ void ansi_feed(uint8_t c) {
         } else if (c == 0x09) {
             screen_goto(screen_row, (screen_col | 7) + 1 > screen_cols - 1 ? screen_cols - 1
                                                                            : (screen_col | 7) + 1);
+        } else if (c == 0x07) {
+            bell_ring();
         }
-        /* other control codes, BEL among them, draw nothing */
+        /* other control codes draw nothing */
         return;
     }
 

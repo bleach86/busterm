@@ -11,6 +11,8 @@
 
 #include <stdint.h>
 
+#include "banks.h"
+
 #define DIR_MAX 40
 #define RECENT_MAX 10
 #define NAME_LEN 24
@@ -34,9 +36,11 @@ typedef struct {
     char when[WHEN_LEN + 1];
 } call_t;
 
-extern board_t dir[DIR_MAX];
+/* the boards and the recent calls, in banked RAM: bank BANK_DATA, which
+ * busterm keeps selected */
+#define dir ((board_t *)BANKED)
+#define recent ((call_t *)(BANKED + DIR_MAX * sizeof(board_t)))
 extern uint8_t dir_count;
-extern call_t recent[RECENT_MAX];
 extern uint8_t recent_count;
 
 void dir_load(void);

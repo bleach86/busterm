@@ -32,6 +32,7 @@ board and press Return to call it, or Esc for the modem's own prompt, where
 | Alt-D | The dialling directory             |
 | Alt-E | ANSI, PETSCII 40 or PETSCII 80     |
 | Alt-H | Hang up                            |
+| Alt-S | Settings                           |
 | Alt-Z | busterm's keys, on the status line |
 | Alt-X | Quit                               |
 
@@ -52,6 +53,9 @@ busterm keeps two text files on the SD card, which a PC can edit too:
 - `BUSTERM.DIR`, the directory, a board a line:
   `name|address|type|columns|calls|last called`
 - `BUSTERM.RCT`, the last ten calls, newest first: `name|address|when`
+- `BUSTERM.CFG`, the settings, a `name=value` line each: `start` (directory
+  or modem), `backspace` (bs or del), `echo` (off or on), `cursor` (steady
+  or blink), `bell` (beep or silent) and `clock` (24 or 12)
 
 ## Building
 

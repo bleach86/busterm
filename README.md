@@ -25,6 +25,9 @@ the PC's character set and colours, at the card's full 115,200 baud.
 - **Uploads:** ZMODEM, started by itself when the board asks for a file:
   pick one of `FILES` on the status line, and it's sent (about 10 KB
   a second).
+- **Capture:** what the board sends, its ANSI or PETSCII codes and all,
+  added to a file in `FILES`, so a screen captured is an `.ANS` (or
+  `.SEQ`) file.
 - **Keeps up with the line:** the screen scrolls in VERA's hardware, so
   text pours in at the full 115,200 baud, short lines or long.
 - **The modem:** the card's Zimodem, at 115,200 baud with RTS/CTS flow
@@ -39,6 +42,7 @@ board and press Return to call it, or Esc for the modem's own prompt, where
 | Key   | Does                               |
 | ----- | ---------------------------------- |
 | PgUp  | Scrollback (also Alt-B)            |
+| Alt-C | Capture to a file, or stop         |
 | Alt-D | The dialling directory             |
 | Alt-E | ANSI, PETSCII 40 or PETSCII 80     |
 | Alt-H | Hang up                            |
@@ -69,6 +73,8 @@ files; one of the same name is replaced. In Open Bus,
 it starts), the same on every X16 program's card. A file stopped
 halfway is deleted. XMODEM pads a file's last block to 128 bytes (with
 Ctrl-Z), and that's kept; YMODEM sends the size, so its files are exact.
+
+To capture, press Alt-C and give a file name (or Return for the last). Everything the board sends from then on goes to the end of that file, in `FILES`, made if it isn't there; the status line says `capturing` (a `*` before the board's name at 40 columns). Alt-C again stops it, and says how much was captured. Quitting stops it too.
 
 In scrollback: Up and Down move a row, Page Up and Page Down a screen, Home
 goes to the oldest row, and Esc (or Page Down at the bottom) goes back to

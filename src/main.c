@@ -7,6 +7,7 @@
 
 #include "ansi.h"
 #include "banks.h"
+#include "capture.h"
 #include "dir.h"
 #include "keys.h"
 #include "petscii.h"
@@ -94,14 +95,15 @@ static void status(void) {
             screen_status(" Alt+ B back D dir H hang R recv X quit");
             return;
         }
-        *p++ = ' ';
+        *p++ = capturing ? '*' : ' '; /* capturing: a star */
         p = put_padded(p, online || calling ? board : "busterm", 16);
         *p++ = ' ';
         p = put_online(p);
     } else {
         if (help) {
-            screen_status(" Alt+ B back  D dir  E type  H hang up  R receive  S settings  X quit"
-                          "  Z back");
+            screen_status(
+                " Alt+ B back C capture D dir E type H hang up R receive S settings X quit"
+                " Z back");
             return;
         }
         p = put_text(p, " busterm \x10 ");
@@ -127,7 +129,7 @@ static void status(void) {
         p = put_2digits(p, now.min);
     }
     if (screen_cols != 40) {
-        p = put_text(p, "  Alt-Z help");
+        p = put_text(p, capturing ? "  capturing " : "  Alt-Z help");
     }
     *p = 0;
     screen_status(line);
@@ -255,6 +257,9 @@ static void incoming(uint8_t c) {
     }
     if (online) {
         watch_downloads(c);
+    }
+    if (capturing) {
+        capture_byte(c);
     }
     feed(c);
 }
@@ -468,9 +473,110 @@ static void receive(uint8_t how) {
     if (how == 1) {
         transfer_zmodem(say);
     } else if (how == 3) {
+        capture_flush(); /* the capture, if it's picked, sent whole */
         transfer_upload(say);
     } else {
         transfer_receive("DOWNLOAD.BIN", say);
+    }
+    status();
+}
+
+/* a line typed on the status line, for any screen, into |buf| (room for
+ * |size| - 1), what's there typed over or added to: 1 for Return, 0 for
+ * Esc */
+static uint8_t status_input(const char *prompt, char *buf, uint8_t size) {
+    uint8_t fresh = 1;
+    for (;;) {
+        uint8_t k, n = 0;
+        char *p = put_text(line, prompt);
+        p = put_text(p, buf);
+        *p++ = '_';
+        *p = 0;
+        screen_status(line);
+        do {
+            k = keys_get();
+        } while (!k);
+        while (buf[n]) {
+            ++n;
+        }
+        if (k == KEY_RETURN) {
+            return 1;
+        } else if (k == KEY_ESC) {
+            return 0;
+        } else if (k == KEY_DEL) {
+            if (n) {
+                buf[n - 1] = 0;
+            }
+            fresh = 0;
+            continue;
+        }
+        if (screen_petscii) {
+            /* PETSCII's letters as they look: unshifted lower case */
+            if (k >= 0x41 && k <= 0x5A) {
+                k += 0x20;
+            } else if (k >= 0xC1 && k <= 0xDA) {
+                k -= 0x80;
+            }
+        }
+        if (k > ' ' && k < 0x7F) {
+            if (fresh) {
+                n = 0; /* a new name, over the old */
+                fresh = 0;
+            }
+            if (n < size - 1) {
+                buf[n] = (char)k;
+                buf[n + 1] = 0;
+            }
+        }
+    }
+}
+
+/* the capture's file name, kept for the next */
+static char cname[25] = "CAPTURE.TXT";
+
+static char *put_number(char *p, unsigned long n) {
+    char digits[10];
+    uint8_t i = 0;
+    do {
+        digits[i++] = '0' + (uint8_t)(n % 10);
+        n /= 10;
+    } while (n);
+    while (i) {
+        *p++ = digits[--i];
+    }
+    return p;
+}
+
+/* Capture stopped, and said how much went to the file */
+static void capture_end(void) {
+    uint8_t ok;
+    unsigned long n = capture_stop(&ok);
+    char *p = put_text(line, ok ? "[captured " : "[the capture stopped: the card said no, after ");
+    p = put_number(p, n);
+    p = put_text(p, " bytes to ");
+    p = put_text(p, capture_name());
+    *p++ = ']';
+    *p = 0;
+    say(line);
+}
+
+/* Capture on, its file asked for; or off */
+static void capture(void) {
+    screen_cursor_hide();
+    if (capturing) {
+        capture_end();
+    } else if (status_input(screen_cols == 40 ? " capture to: "
+                                              : " Capture what the board sends to: ",
+                            cname, sizeof cname)) {
+        if (capture_start(cname)) {
+            char *p = put_text(line, "[capturing to FILES/");
+            p = put_text(p, cname);
+            p = put_text(p, "; Alt-C stops]");
+            *p = 0;
+        } else {
+            put_text(put_text(line, "[couldn't capture to "), cname)[0] = 0;
+        }
+        say(line);
     }
     status();
 }
@@ -512,6 +618,9 @@ static uint8_t command(uint8_t c) {
     case 'r':
         receive(2);
         break;
+    case 'c':
+        capture();
+        break;
     case 'h':
         if (online || calling) {
             hang_up();
@@ -523,6 +632,9 @@ static uint8_t command(uint8_t c) {
                 break;
             }
             hang_up_now();
+        }
+        if (capturing) {
+            capture_end();
         }
         return 1;
     default:

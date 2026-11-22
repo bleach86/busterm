@@ -221,9 +221,38 @@ static void watch(uint8_t c) {
 }
 
 /* a byte from the modem */
+/* A download the board's begun: ZMODEM's ZRQINIT ("**", ZDLE, "B00"),
+ * which every ZMODEM sender starts with; or lrzsz's XMODEM, which asks
+ * for the receiver in words. YMODEM's sender says nothing: Alt-R. */
+static const char zmodem_start[] = "**\x18"
+                                   "B00";
+static const char xmodem_start[] = "receive command now.";
+static uint8_t z_at, x_at;
+static uint8_t begun; /* 1 ZMODEM, 2 XMODEM */
+
+static void watch_downloads(uint8_t c) {
+    if (c == (uint8_t)zmodem_start[z_at]) {
+        if (!zmodem_start[++z_at]) {
+            z_at = 0, begun = 1;
+        }
+    } else {
+        z_at = c != '*' ? 0 : z_at == 2 ? 2 : 1;
+    }
+    if (c == (uint8_t)xmodem_start[x_at]) {
+        if (!xmodem_start[++x_at]) {
+            x_at = 0, begun = 2;
+        }
+    } else {
+        x_at = c == (uint8_t)xmodem_start[0];
+    }
+}
+
 static void incoming(uint8_t c) {
     if (calling && !online) {
         watch(c);
+    }
+    if (online) {
+        watch_downloads(c);
     }
     feed(c);
 }
@@ -420,56 +449,6 @@ static void next_emulation(void) {
     status();
 }
 
-/* a line typed on the status line, for any screen, into |buf| (room for
- * |size| - 1), what's there typed over or added to: 1 for Return, 0 for
- * Esc */
-static uint8_t status_input(const char *prompt, char *buf, uint8_t size) {
-    uint8_t fresh = 1;
-    for (;;) {
-        uint8_t k, n = 0;
-        char *p = put_text(line, prompt);
-        p = put_text(p, buf);
-        *p++ = '_';
-        *p = 0;
-        screen_status(line);
-        do {
-            k = keys_get();
-        } while (!k);
-        while (buf[n]) {
-            ++n;
-        }
-        if (k == KEY_RETURN) {
-            return 1;
-        } else if (k == KEY_ESC) {
-            return 0;
-        } else if (k == KEY_DEL) {
-            if (n) {
-                buf[n - 1] = 0;
-            }
-            fresh = 0;
-            continue;
-        }
-        if (screen_petscii) {
-            /* PETSCII's letters as they look: unshifted lower case */
-            if (k >= 0x41 && k <= 0x5A) {
-                k += 0x20;
-            } else if (k >= 0xC1 && k <= 0xDA) {
-                k -= 0x80;
-            }
-        }
-        if (k > ' ' && k < 0x7F) {
-            if (fresh) {
-                n = 0; /* a new name, over the old */
-                fresh = 0;
-            }
-            if (n < size - 1) {
-                buf[n] = (char)k;
-                buf[n + 1] = 0;
-            }
-        }
-    }
-}
-
 /* a line about a transfer, in the terminal */
 static void say(const char *s) {
     print("\r\n\x1b[1;36m");
@@ -477,16 +456,17 @@ static void say(const char *s) {
     print("\x1b[0m\r\n");
 }
 
-/* XMODEM's file name, kept for the next */
-static char xname[25] = "DOWNLOAD.BIN";
-
-/* Files from the board, once it's sending */
-static void receive(void) {
+/* Files from the board, once it's sending: ZMODEM's, or XMODEM's (named
+ * DOWNLOAD.BIN) or YMODEM's (named as the board has them) */
+static void receive(uint8_t how) {
     screen_cursor_hide();
-    if (status_input(screen_cols == 40 ? " xmodem name: "
-                                       : " Receive (YMODEM names its files). XMODEM's name: ",
-                     xname, sizeof xname)) {
-        transfer_receive(xname, say);
+    if (!screen_petscii) {
+        print("\r\x1b[K"); /* ZMODEM's start, drawn as it came, gone */
+    }
+    if (how == 1) {
+        transfer_zmodem(say);
+    } else {
+        transfer_receive("DOWNLOAD.BIN", say);
     }
     status();
 }
@@ -526,7 +506,7 @@ static uint8_t command(uint8_t c) {
         status();
         break;
     case 'r':
-        receive();
+        receive(2);
         break;
     case 'h':
         if (online || calling) {
@@ -577,7 +557,12 @@ int main(void) {
             screen_cursor_hide();
             do {
                 incoming(uart_get());
-            } while (--n && uart_ready());
+            } while (--n && uart_ready() && !begun);
+        }
+        if (begun) {
+            uint8_t how = begun;
+            begun = 0;
+            receive(how);
         }
         if (call_failed) {
             call_failed = 0;

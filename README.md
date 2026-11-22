@@ -18,9 +18,10 @@ the PC's character set and colours, at the card's full 115,200 baud.
   line.
 - **Scrollback:** about 2,800 rows that scrolled off the top, colours and
   all, kept in the X16's banked RAM. Page Up (or Alt-B) looks back.
-- **Downloads:** YMODEM batch (YMODEM-g when the sender can, about 9 KB a
-  second) and XMODEM (CRC or checksum, 128 or 1K blocks), into a
-  `DOWNLOADS` folder on the SD card.
+- **Downloads:** ZMODEM, started by itself when the board starts sending
+  (about 10 KB a second); YMODEM batch (YMODEM-g when the sender can) and
+  XMODEM (CRC or checksum, 128 or 1K blocks). Into a `DOWNLOADS` folder on
+  the SD card.
 - **Keeps up with the line:** the screen scrolls in VERA's hardware, so
   text pours in at the full 115,200 baud, short lines or long.
 - **The modem:** the card's Zimodem, at 115,200 baud with RTS/CTS flow
@@ -40,7 +41,7 @@ board and press Return to call it, or Esc for the modem's own prompt, where
 | Alt-D | The dialling directory             |
 | Alt-E | ANSI, PETSCII 40 or PETSCII 80     |
 | Alt-H | Hang up                            |
-| Alt-R | Receive a file                     |
+| Alt-R | Receive a YMODEM or XMODEM file    |
 | Alt-S | Settings                           |
 | Alt-Z | busterm's keys, on the status line |
 | Alt-X | Quit                               |
@@ -51,10 +52,11 @@ hanging up and calling it. A call made from the directory goes back to it
 when it ends; Esc closes it again to read the board's last words. A call
 dialled at the modem's prompt goes back there.
 
-To download, start the download on the board, then press Alt-R. busterm
-asks on the status line for a name, used only if the board sends XMODEM
-(YMODEM names its own files); type a new one or press Return. Its progress
-shows on the status line, and Esc stops it. Files go in a `DOWNLOADS`
+To download, pick the file on the board and choose ZMODEM: busterm sees it
+start and receives it, nothing to press. With YMODEM, whose sender says
+nothing to start, press Alt-R once the board's waiting; XMODEM from lrzsz
+(as most boards have) starts by itself too, its file named DOWNLOAD.BIN.
+The progress shows on the status line, and Esc stops it. Files go in a `DOWNLOADS`
 folder next to busterm, made the first time, so no board can write over
 busterm's own files; one of the same name is replaced. A file stopped
 halfway is deleted. XMODEM pads a file's last block to 128 bytes (with

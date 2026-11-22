@@ -846,7 +846,7 @@ static void zreceive(void) {
     }
 }
 
-/* ZMODEM's sending: a file of DOWNLOADS, picked on the status line,
+/* ZMODEM's sending: a file of FILES, picked on the status line,
  * as a board's receiver (its ZRINIT) waits for one. Binary headers with a
  * 16-bit CRC, 1K subpackets streamed (ZCRCG), the board's ZRPOS heeded. */
 
@@ -914,7 +914,7 @@ static void send_sub(const uint8_t *p, uint16_t n, uint8_t end, uint8_t banked) 
     }
 }
 
-/* DOWNLOADS's files, from its long listing ("$=L": a BASIC program's
+/* FILES's files, from its long listing ("$=L": a BASIC program's
  * lines, each its size in K, the name in quotes, its type, its date,
  * and its size in bytes, 8 hex digits, last), into their bank */
 static void list_files(void) {
@@ -1220,7 +1220,7 @@ static void upload(const char *unused) {
     list_files();
     if (!listed) {
         zcancel();
-        tell("nothing in DOWNLOADS to send", 0);
+        tell("nothing in FILES to send", 0);
         return;
     }
     i = pick();
@@ -1233,7 +1233,7 @@ static void upload(const char *unused) {
     zsend();
 }
 
-/* |receiver| run in the DOWNLOADS folder, made if it isn't there */
+/* |receiver| run in the FILES folder, made if it isn't there */
 static void in_downloads(void (*receiver)(const char *), const char *xname,
                          void (*said)(const char *)) {
     uint8_t bank = RAM_BANK;
@@ -1245,13 +1245,13 @@ static void in_downloads(void (*receiver)(const char *), const char *xname,
     }
     RAM_BANK = BANK_TRANSFER;
     tables();
-    file_command("MD:DOWNLOADS");
-    if (file_command("CD:DOWNLOADS")) {
+    file_command("MD:FILES");
+    if (file_command("CD:FILES")) {
         receiver(xname);
         file_command("CD:..");
     } else {
         cancel();
-        tell("couldn't open the DOWNLOADS folder", 0);
+        tell("couldn't open the FILES folder", 0);
     }
     RAM_BANK = bank;
 }

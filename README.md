@@ -20,10 +20,10 @@ the PC's character set and colours, at the card's full 115,200 baud.
   all, kept in the X16's banked RAM. Page Up (or Alt-B) looks back.
 - **Downloads:** ZMODEM, started by itself when the board starts sending
   (about 10 KB a second); YMODEM batch (YMODEM-g when the sender can) and
-  XMODEM (CRC or checksum, 128 or 1K blocks). Into a `DOWNLOADS` folder on
-  the SD card.
+  XMODEM (CRC or checksum, 128 or 1K blocks). Into a `FILES` folder on the
+  SD card.
 - **Uploads:** ZMODEM, started by itself when the board asks for a file:
-  pick one of `DOWNLOADS` on the status line, and it's sent (about 10 KB
+  pick one of `FILES` on the status line, and it's sent (about 10 KB
   a second).
 - **Keeps up with the line:** the screen scrolls in VERA's hardware, so
   text pours in at the full 115,200 baud, short lines or long.
@@ -60,11 +60,13 @@ nothing to start, press Alt-R once the board's waiting; XMODEM from lrzsz
 The progress shows on the status line, and Esc stops it.
 
 To upload, choose upload on the board, with ZMODEM: busterm sees the board
-waiting and asks on the status line which file of `DOWNLOADS` to send (Up
+waiting and asks on the status line which file of `FILES` to send (Up
 and Down go through them, with their sizes; Return sends it; Esc sends
-none, and tells the board so). Files go in a `DOWNLOADS`
-folder next to busterm, made the first time, so no board can write over
-busterm's own files; one of the same name is replaced. A file stopped
+none, and tells the board so). Files go in a `FILES` folder next to
+busterm, made the first time, so no board can write over busterm's own
+files; one of the same name is replaced. In Open Bus,
+`FILES` is a folder on the computer (Documents, `Open Bus/X16 Files`, as
+it starts), the same on every X16 program's card. A file stopped
 halfway is deleted. XMODEM pads a file's last block to 128 bytes (with
 Ctrl-Z), and that's kept; YMODEM sends the size, so its files are exact.
 

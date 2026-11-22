@@ -16,12 +16,14 @@ the PC's character set and colours, at the card's full 115,200 baud.
   terminal type and columns, kept on the SD card.
 - **Tells the board its screen size:** 80 by 29, under busterm's status
   line.
+- **Scrollback:** about 2,800 rows that scrolled off the top, colours and
+  all, kept in the X16's banked RAM. Page Up (or Alt-B) looks back.
 - **Keeps up with the line:** the screen scrolls in VERA's hardware, so
   text pours in at the full 115,200 baud, short lines or long.
 - **The modem:** the card's Zimodem, at 115,200 baud with RTS/CTS flow
   control, so nothing is lost when the screen falls behind.
 
-Planned: scrollback, capture to a file, and XMODEM and YMODEM downloads.
+Planned: capture to a file, and XMODEM and YMODEM downloads.
 
 ## Using it
 
@@ -31,6 +33,7 @@ board and press Return to call it, or Esc for the modem's own prompt, where
 
 | Key   | Does                               |
 | ----- | ---------------------------------- |
+| PgUp  | Scrollback (also Alt-B)            |
 | Alt-D | The dialling directory             |
 | Alt-E | ANSI, PETSCII 40 or PETSCII 80     |
 | Alt-H | Hang up                            |
@@ -44,13 +47,18 @@ hanging up and calling it. A call made from the directory goes back to it
 when it ends; Esc closes it again to read the board's last words. A call
 dialled at the modem's prompt goes back there.
 
+In scrollback: Up and Down move a row, Page Up and Page Down a screen, Home
+goes to the oldest row, and Esc (or Page Down at the bottom) goes back to
+the terminal. The board waits meanwhile. Changing between ANSI and PETSCII
+starts the scrollback afresh.
+
 The arrow keys and Home send ANSI codes, and Delete sends backspace.
 busterm leaves the function keys alone, for programs and emulators that
 use them.
 
 ### Files
 
-busterm keeps two text files on the SD card, which a PC can edit too:
+busterm keeps three text files on the SD card, which a PC can edit too:
 
 - `BUSTERM.DIR`, the directory, a board a line:
   `name|address|type|columns|calls|last called`

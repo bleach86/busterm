@@ -64,6 +64,14 @@ void screen_cursor_hide(void);
  * 1 to 29 the terminal's), for windows drawn over the terminal */
 uint32_t screen_cell(uint8_t row, uint8_t col);
 
+/* Scrollback's view: layer 0 shows a second map instead of the terminal's
+ * (on), or the terminal's again (off), the terminal untouched. Its rows,
+ * as the terminal's, are at screen_view_row(), and screen_view_live()
+ * copies the terminal's row |live| to the view's row |row|. */
+void screen_view(uint8_t on);
+uint32_t screen_view_row(uint8_t row);
+void screen_view_live(uint8_t row, uint8_t live);
+
 /* something else drew: the terminal finds its place again */
 void screen_forget(void);
 

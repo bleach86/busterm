@@ -3,8 +3,9 @@
 ;
 ; Alt (keys 60 and 62) is followed. A key pressed while Alt is held is kept
 ; in key_alt_code for busterm's main loop, and neither it nor its release is
-; typed (A is 0 on return). Everything else goes on to the ROM's own
-; handler, as before.
+; typed (A is 0 on return). So are Page Up and Page Down (keys 85 and 86),
+; Alt or not: they're scrollback's. Everything else goes on to the ROM's
+; own handler, as before.
 
 .global busterm_key_hook
 
@@ -16,9 +17,14 @@ busterm_key_hook:
     beq alt
     cmp #62                 ; right Alt
     beq alt
+    cmp #85                 ; Page Up
+    beq ours
+    cmp #86                 ; Page Down
+    beq ours
     lda key_alt_down
     beq pass
-    pla                     ; a key with Alt held
+ours:
+    pla                     ; a key with Alt held, or a page key
     bmi drop                ; its release: nothing
     sta key_alt_code        ; its press: busterm's
 drop:

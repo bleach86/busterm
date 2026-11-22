@@ -11,6 +11,7 @@
 #include "keys.h"
 #include "petscii.h"
 #include "screen.h"
+#include "scrollback.h"
 #include "settings.h"
 #include "sound.h"
 #include "uart.h"
@@ -89,7 +90,7 @@ static void status(void) {
 
     if (screen_cols == 40) {
         if (help) {
-            screen_status(" Alt+ D dir E mode H hang S set X quit");
+            screen_status(" Alt+ B back D dir H hang S set X quit");
             return;
         }
         *p++ = ' ';
@@ -98,7 +99,7 @@ static void status(void) {
         p = put_online(p);
     } else {
         if (help) {
-            screen_status(" Alt+  D directory  E ANSI/PETSCII  H hang up  S settings  X quit"
+            screen_status(" Alt+  B scrollback  D directory  E type  H hang up  S settings  X quit"
                           "  Z back");
             return;
         }
@@ -434,6 +435,11 @@ static uint8_t command(uint8_t c) {
     switch (c) {
     case 'z':
         help = !help;
+        status();
+        break;
+    case 'b':
+    case KEY_PGUP:
+        scrollback_view(KEY_PGUP);
         status();
         break;
     case 'd':

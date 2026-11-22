@@ -25,8 +25,8 @@ void keys_done(void);
 /* a key typed, or 0 */
 uint8_t keys_get(void);
 
-/* a key pressed with Alt: its letter or digit, lower case ('d' for Alt-D),
- * KEY_PGUP or KEY_PGDN, or 0 */
+/* a key pressed with Alt: its letter or digit, lower case ('d' for Alt-D);
+ * or Page Up or Down, Alt or not (KEY_PGUP, KEY_PGDN); or 0 */
 #define KEY_PGUP 0x80
 #define KEY_PGDN 0x81
 uint8_t keys_alt(void);

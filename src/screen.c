@@ -4,6 +4,7 @@
 #include <cx16.h>
 
 #include "font.h"
+#include "scrollback.h"
 #include "vera.h"
 
 /* The terminal is on layer 0, its own map of 32 rows of 128 cells at the
@@ -15,10 +16,11 @@
  * the map's row under it is kept blank, on colour 0. */
 #define UNDER_STATUS (TERM_ROWS - 1) /* the row before the terminal's 0 */
 #define TERM_MAP 0x00000UL
-#define TERM_ROWS 32     /* a power of 2 */
-#define TERM_SHIFT 8     /* 128 cells of 2 bytes */
-#define TERM_CONFIG 0x20 /* 128 by 32 tiles, 1 bit a pixel: text */
-#define CLEAR 0x00       /* layer 1's cells over the terminal */
+#define VIEW_MAP 0x02000UL /* scrollback's, the same size, after it */
+#define TERM_ROWS 32       /* a power of 2 */
+#define TERM_SHIFT 8       /* 128 cells of 2 bytes */
+#define TERM_CONFIG 0x20   /* 128 by 32 tiles, 1 bit a pixel: text */
+#define CLEAR 0x00         /* layer 1's cells over the terminal */
 
 /* the ROM's screen modes, and CHROUT's codes for its character sets */
 #define MODE_80X30 1
@@ -146,7 +148,9 @@ static void mode(uint8_t which, uint8_t cols, uint8_t rows) {
     }
 
     /* layer 0 the terminal's, as layer 1 but for its map; all of it
-     * cleared, the rows out of sight too */
+     * cleared, the rows out of sight too; no scrollback from another
+     * screen */
+    scrollback_clear();
     origin = 0;
     for (r = 0; r < TERM_ROWS; ++r) {
         clear_row(r, CLEAR);
@@ -288,6 +292,7 @@ void screen_scroll_up(uint8_t top, uint8_t bottom, uint8_t n) {
         /* the whole terminal: a row at a time, the one coming in cleared
          * while it's out of sight */
         while (n--) {
+            scrollback_push(cell(0, 0), screen_cols);
             clear_row(screen_rows, screen_attr);
             ++origin;
             show_origin();
@@ -295,6 +300,12 @@ void screen_scroll_up(uint8_t top, uint8_t bottom, uint8_t n) {
         }
         addr_ok = 0;
         return;
+    }
+    if (top == 0) {
+        /* a region from the top: its rows going off it kept too */
+        for (r = 0; r < n; ++r) {
+            scrollback_push(cell(r, 0), screen_cols);
+        }
     }
     irq_off();
     for (r = top; r + n <= bottom; ++r) {
@@ -382,6 +393,32 @@ void screen_cursor_hide(void) {
     VERA_DATA1 = cursor_attr;
     cursor_drawn = 0;
     addr_ok = 0;
+}
+
+void screen_view(uint8_t on) {
+    uint8_t n = screen_cols;
+    if (on) {
+        /* the row under the status line, blank as the terminal's */
+        vera_port1(VIEW_MAP + ((uint16_t)UNDER_STATUS << TERM_SHIFT), VERA_INC1);
+        while (n--) {
+            VERA_DATA1 = ' ';
+            VERA_DATA1 = CLEAR;
+        }
+        VERA_L0_MAPBASE = (uint8_t)(VIEW_MAP >> 9);
+        VERA_L0_VSCROLL_L = (uint8_t)(UNDER_STATUS << 3);
+    } else {
+        VERA_L0_MAPBASE = (uint8_t)(TERM_MAP >> 9);
+        show_origin();
+    }
+    addr_ok = 0;
+}
+
+uint32_t screen_view_row(uint8_t row) { return VIEW_MAP + ((uint16_t)row << TERM_SHIFT); }
+
+void screen_view_live(uint8_t row, uint8_t live) {
+    irq_off();
+    copy(cell(live, 0), screen_view_row(row), VERA_INC1, screen_cols * 2);
+    irq_on();
 }
 
 void screen_forget(void) { addr_ok = 0; }

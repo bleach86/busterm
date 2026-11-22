@@ -1,0 +1,52 @@
+#ifndef DIR_H
+#define DIR_H
+
+/* The dialling directory and the recent calls, kept on the SD card as text
+ * a PC can read and edit too:
+ *
+ *   BUSTERM.DIR   a board a line: name|address|type|columns|calls|last
+ *   BUSTERM.RCT   a call a line, newest first: name|address|when
+ *
+ * type is ANSI, PETSCII or ASCII; when and last are YYMMDDhhmm. */
+
+#include <stdint.h>
+
+#define DIR_MAX 40
+#define RECENT_MAX 10
+#define NAME_LEN 24
+#define ADDR_LEN 48
+#define WHEN_LEN 10
+
+enum { EMU_ANSI, EMU_PETSCII, EMU_ASCII };
+
+typedef struct {
+    char name[NAME_LEN + 1];
+    char addr[ADDR_LEN + 1]; /* host:port */
+    uint8_t emu;
+    uint8_t cols; /* 80 or 40 */
+    uint16_t calls;
+    char last[WHEN_LEN + 1];
+} board_t;
+
+typedef struct {
+    char name[NAME_LEN + 1];
+    char addr[ADDR_LEN + 1];
+    char when[WHEN_LEN + 1];
+} call_t;
+
+extern board_t dir[DIR_MAX];
+extern uint8_t dir_count;
+extern call_t recent[RECENT_MAX];
+extern uint8_t recent_count;
+
+void dir_load(void);
+void dir_save(void);
+
+/* a call made: to the recent calls, and to its board's count, if it's one */
+void dir_called(const char *name, const char *addr);
+
+/* The directory's window. Returns 1 with the board to call in |name| and
+ * |addr|, or 0 if it was closed. */
+uint8_t dir_window(const char **name, const char **addr);
+
+#endif

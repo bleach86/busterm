@@ -1,0 +1,38 @@
+# Every push and pull request: the formatting, a build with warnings as
+# errors, enough room left for the stack, and the build kept as BUSTERM.PRG.
+name: Check
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: tools/fetch-sdk
+      # The SDK's own clang-format, so the format is the one it gives here.
+      - run: ~/llvm-mos/bin/clang-format --dry-run --Werror src/*.c src/*.h
+      - run: make CFLAGS="-Oz -Wall -Wextra -Werror"
+      - run: make room
+      - uses: actions/upload-artifact@v7
+        with:
+          name: busterm
+          path: BUSTERM.PRG
+
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      # The version the editor's Prettier has, so the two agree.
+      - run: npx --yes prettier@3.7.4 --check README.md ".github/workflows/*.yml"

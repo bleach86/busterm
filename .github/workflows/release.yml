@@ -1,0 +1,54 @@
+# A version tag, v0.1 say: busterm built and put on a GitHub release of that
+# tag, as BUSTERM.PRG and as a zip with the README and licence. The tag has
+# to be the version busterm says it is (VERSION in src/main.c). Run by hand
+# (Actions → Release → Run workflow), it builds them as artifacts of the run,
+# without a release.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tag matches VERSION
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version=$(sed -n 's/^#define VERSION "\(.*\)"$/\1/p' src/main.c)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::the tag is $GITHUB_REF_NAME, but src/main.c says $version"
+            exit 1
+          fi
+      - run: tools/fetch-sdk
+      - run: make CFLAGS="-Oz -Wall -Wextra -Werror"
+      - run: make room
+      - name: The zip
+        run: |
+          version=$(sed -n 's/^#define VERSION "\(.*\)"$/\1/p' src/main.c)
+          zip "busterm-$version.zip" BUSTERM.PRG README.md LICENSE
+      - uses: actions/upload-artifact@v7
+        with:
+          name: busterm
+          path: |
+            BUSTERM.PRG
+            busterm-*.zip
+      # A draft first, published once its files are there; run again, the
+      # release that's there already is used.
+      - name: The release, and its files
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft \
+              --title "busterm ${GITHUB_REF_NAME#v}" --generate-notes
+          fi
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber \
+            BUSTERM.PRG busterm-*.zip
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false

@@ -4,6 +4,18 @@ A BBS terminal for the Commander X16 and TexElec's Serial & ESP32 Network
 Card. It's made for calling today's BBSes from the X16: their ANSI art in
 the PC's character set and colours, at the card's full 115,200 baud.
 
+It needs the X16's R49 ROM (or later) and the card, with its Zimodem
+firmware. So far it's been tested in the
+[Open Bus](https://github.com/bleach86/Open-Bus) emulator, whose X16 has
+the card and Zimodem, and not yet on real hardware: reports from a real X16
+are welcome.
+
+## Getting it
+
+`BUSTERM.PRG` is on the [releases](../../releases) page, alone or in a zip
+with this README. Put it on the X16's SD card, then `LOAD "BUSTERM.PRG"` and
+`RUN`.
+
 ## What it does so far
 
 - **ANSI-BBS:** colours, cursor movement, clearing, scrolling regions,
@@ -35,7 +47,7 @@ the PC's character set and colours, at the card's full 115,200 baud.
 
 ## Using it
 
-Load and run `BUSTERM.PRG`. It opens on the dialling directory: pick a
+It opens on the dialling directory: pick a
 board and press Return to call it, or Esc for the modem's own prompt, where
 `ATDT"bbs.example.org:23"` dials.
 
@@ -74,7 +86,11 @@ it starts), the same on every X16 program's card. A file stopped
 halfway is deleted. XMODEM pads a file's last block to 128 bytes (with
 Ctrl-Z), and that's kept; YMODEM sends the size, so its files are exact.
 
-To capture, press Alt-C and give a file name (or Return for the last). Everything the board sends from then on goes to the end of that file, in `FILES`, made if it isn't there; the status line says `capturing` (a `*` before the board's name at 40 columns). Alt-C again stops it, and says how much was captured. Quitting stops it too.
+To capture, press Alt-C and give a file name (or Return for the last).
+Everything the board sends from then on goes to the end of that file, in
+`FILES`, made if it isn't there; the status line says `capturing` (a `*`
+before the board's name at 40 columns). Alt-C again stops it, and says how
+much was captured. Quitting stops it too.
 
 In scrollback: Up and Down move a row, Page Up and Page Down a screen, Home
 goes to the oldest row, and Esc (or Page Down at the bottom) goes back to
@@ -107,6 +123,12 @@ make
 
 The PC's character set is the X16 ROM's own (its CP437 set, which R49
 has).
+
+busterm and its variables share the X16's main RAM with the stack, which
+grows down from $9F00. `make room` says how much is left for the stack and
+fails under 512 bytes. The checks on GitHub run it, with the build (warnings
+as errors) and the formatting (`clang-format` from the SDK v23.4.0, Prettier
+3.7.4), and keep each build's `BUSTERM.PRG`.
 
 ## Licence
 

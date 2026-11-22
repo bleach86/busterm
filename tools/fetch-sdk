@@ -1,0 +1,7 @@
+#!/bin/sh
+# The llvm-mos SDK busterm is built with, into ~/llvm-mos (Linux), for the
+# checks and releases on GitHub.
+set -eu
+version=v23.4.0
+curl -fsSL "https://github.com/llvm-mos/llvm-mos-sdk/releases/download/$version/llvm-mos-linux.tar.xz" |
+    tar -xJ -C "$HOME"

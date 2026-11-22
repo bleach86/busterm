@@ -13,7 +13,17 @@ HDR := $(wildcard src/*.h)
 BUSTERM.PRG: $(SRC) $(HDR)
 	$(CC) $(CFLAGS) -o $@ $(SRC)
 
+# The room left between the variables' end and the stack's top ($9F00),
+# which the stack grows down into. The deepest it was seen to go is about
+# 320 bytes (reading the dialling directory), so less than MIN_ROOM fails.
+MIN_ROOM ?= 512
+room: BUSTERM.PRG
+	@symbol() { $(LLVM_MOS)/bin/llvm-nm BUSTERM.PRG.elf | awk -v s=$$1 '$$3 == s { print $$1 }'; }; \
+	room=$$((0x$$(symbol __stack) - 0x$$(symbol __heap_start))); \
+	echo "$$room bytes free for the stack (at least $(MIN_ROOM) wanted)"; \
+	test $$room -ge $(MIN_ROOM)
+
 clean:
 	rm -f BUSTERM.PRG BUSTERM.PRG.elf
 
-.PHONY: clean
+.PHONY: clean room

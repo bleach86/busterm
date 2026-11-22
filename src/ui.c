@@ -162,3 +162,30 @@ uint8_t ui_field(uint8_t row, uint8_t col, uint8_t width, char *buf, uint8_t siz
         }
     }
 }
+
+static const char *const ask_hints[] = {"Y", " yes   ", "N", " no", 0};
+
+uint8_t ui_ask(const char *line1, const char *line2) {
+    window_t w;
+    uint8_t width = length(line1), k;
+    if (line2 && length(line2) > width) {
+        width = length(line2);
+    }
+    width += 8;
+    if (width < 24) {
+        width = 24;
+    }
+    if (!ui_open(&w, 11, (80 - width) / 2, line2 ? 8 : 7, width, 0)) {
+        return 0;
+    }
+    ui_text(12, w.col + 4, line1, UI_TEXT, 0);
+    if (line2) {
+        ui_text(13, w.col + 4, line2, UI_TEXT, 0);
+    }
+    ui_hints(w.row + w.height - 2, w.col + 4, ask_hints);
+    do {
+        k = keys_get();
+    } while (k != 'y' && k != 'Y' && k != 'n' && k != 'N' && k != KEY_ESC);
+    ui_close(&w);
+    return k == 'y' || k == 'Y';
+}

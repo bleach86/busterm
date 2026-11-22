@@ -1,26 +1,39 @@
 #ifndef SCREEN_H
 #define SCREEN_H
 
-/* The screen: the X16's 80 by 30 text mode, with the PC's 16 colours and
- * its character set (code page 437). The first row is busterm's status
- * line; the 29 under it are the terminal's, its rows 0 to 28. */
+/* The screen: the X16's text mode, the first row busterm's status line and
+ * the rows under it the terminal's, its rows 0 on.
+ *
+ *   ANSI      80 by 29, the PC's colours and character set (code page 437),
+ *             the keyboard in ISO mode
+ *   PETSCII   40 or 80 by 25, as a Commodore's screen: its colours, the
+ *             X16's own PETSCII font, the keyboard typing PETSCII */
 
 #include <stdint.h>
 
-#define SCREEN_COLS 80
-#define SCREEN_ROWS 29 /* the terminal's */
+/* the terminal's size, and which it is */
+extern uint8_t screen_cols, screen_rows;
+extern uint8_t screen_petscii;
 
 /* where the cursor is, and the colours being drawn in: background in the
- * high nibble, foreground in the low, the PC's colour numbers */
+ * high nibble, foreground in the low, the PC's or the C64's colour
+ * numbers */
 extern uint8_t screen_row, screen_col, screen_attr;
 
 /* the scrolling region, rows top to bottom, inclusive */
 extern uint8_t screen_top, screen_bottom;
 
-void screen_init(void);
+/* the screen made ANSI's, or PETSCII's |cols| wide; cleared */
+void screen_ansi(void);
+void screen_petscii_mode(uint8_t cols);
 
-/* the PC's character |c| at the cursor, which moves on; past the last
- * column, the next character goes on the next line */
+/* PETSCII's two character sets: lower and upper case, or upper case and
+ * graphics */
+void screen_charset(uint8_t lower);
+
+/* character |c| at the cursor (the PC's, or a Commodore screen code),
+ * which moves on; past the last column ANSI's next character goes on the
+ * next line, and a Commodore's cursor goes there at once */
 void screen_put(uint8_t c);
 
 void screen_goto(uint8_t row, uint8_t col);
@@ -36,7 +49,13 @@ void screen_clear_rows(uint8_t from, uint8_t to);
 void screen_scroll_up(uint8_t top, uint8_t bottom, uint8_t n);
 void screen_scroll_down(uint8_t top, uint8_t bottom, uint8_t n);
 
-/* the cursor, drawn as the cell's colours swapped */
+/* a Commodore's DEL and INST: the row's rest moved left over the cursor,
+ * or right to make room at it */
+void screen_delete_char(void);
+void screen_insert_char(void);
+
+/* the cursor, drawn as the cell's colours swapped (PETSCII: the character
+ * reversed) */
 extern uint8_t screen_cursor_on;
 void screen_cursor_show(void);
 void screen_cursor_hide(void);

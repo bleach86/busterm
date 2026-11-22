@@ -33,6 +33,10 @@ void ui_fill(uint8_t row, uint8_t col, uint8_t n, uint8_t c, uint8_t attr);
  * col); |hints| is key, words, key, words..., ended by 0 */
 void ui_hints(uint8_t row, uint8_t col, const char *const *hints);
 
+/* A question in a window of its own, |line1| and |line2| under it (or
+ * 0): 1 for Y, 0 for N or Esc. */
+uint8_t ui_ask(const char *line1, const char *line2);
+
 /* A one-line text field at (row, col), |width| wide, editing |buf| (room
  * for |size| - 1 characters). Returns the key that left it: Return, Tab,
  * Escape, up or down. */

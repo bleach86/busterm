@@ -9,8 +9,10 @@
 #include "banks.h"
 #include "dir.h"
 #include "keys.h"
+#include "petscii.h"
 #include "screen.h"
 #include "uart.h"
+#include "ui.h"
 
 #define VERSION "0.1"
 
@@ -57,20 +59,7 @@ static char *put_2digits(char *p, uint8_t n) {
     return p;
 }
 
-/* the status line: busterm, the board, the emulation and speed, online
- * and for how long, then the clock and where help is at the right */
-static void status(void) {
-    char *p = line;
-    cx16_date_time_t now;
-
-    if (help) {
-        screen_status(" Alt-D directory   Alt-H hang up   Alt-X quit   Alt-Z back"
-                      "     ATDT\"host:port\" dials");
-        return;
-    }
-    p = put_text(p, " busterm \x10 ");
-    p = put_padded(p, online || calling ? board : "", 20);
-    p = put_text(p, " ANSI 115200 ");
+static char *put_online(char *p) {
     if (online) {
         unsigned long secs = (cx16_k_rdtim() - online_since) / JIFFIES;
         p = put_text(p, "online ");
@@ -79,23 +68,89 @@ static void status(void) {
         p = put_2digits(p, (uint8_t)(secs / 60 % 60));
         *p++ = ':';
         p = put_2digits(p, (uint8_t)(secs % 60));
-    } else {
-        p = put_text(p, calling ? "calling...     " : "offline        ");
+        return p;
     }
-    /* 59 columns so far: the clock at 61, help at 68 */
+    return put_text(p, calling ? "calling...     " : "offline        ");
+}
+
+/* the status line: busterm, the board, the emulation and speed, online
+ * and for how long, then the clock and where help is at the right; on a
+ * 40 column screen, the board, online and the clock */
+static void status(void) {
+    char *p = line;
+    cx16_date_time_t now;
+
+    if (screen_cols == 40) {
+        if (help) {
+            screen_status(" Alt+ D dir  E mode  H hang up  X quit");
+            return;
+        }
+        *p++ = ' ';
+        p = put_padded(p, online || calling ? board : "busterm", 16);
+        *p++ = ' ';
+        p = put_online(p);
+    } else {
+        if (help) {
+            screen_status(" Alt-D directory  Alt-E ANSI/PETSCII  Alt-H hang up  Alt-X quit"
+                          "  Alt-Z back");
+            return;
+        }
+        p = put_text(p, " busterm \x10 ");
+        p = put_padded(p, online || calling ? board : "", 20);
+        p = put_text(p, screen_petscii ? " PETSCII 80  " : " ANSI 115200 ");
+        p = put_online(p);
+        /* 59 columns so far: the clock at 61, help at 68 */
+    }
     p = put_text(p, "  ");
     cx16_k_clock_get_date_time(&now);
     p = put_2digits(p, now.hour);
     *p++ = ':';
     p = put_2digits(p, now.min);
-    p = put_text(p, "  Alt-Z help");
+    if (screen_cols != 40) {
+        p = put_text(p, "  Alt-Z help");
+    }
     *p = 0;
     screen_status(line);
 }
 
+/* a byte from the board, to the screen as the board's terminal type */
+static void feed(uint8_t c) {
+    if (screen_petscii) {
+        petscii_feed(c);
+    } else {
+        ansi_feed(c);
+    }
+}
+
+/* busterm's own words on the terminal: ANSI's escape codes for colour, or
+ * on a Commodore screen the plain text, its letters as PETSCII has them */
 static void print(const char *s) {
+    if (!screen_petscii) {
+        while (*s) {
+            ansi_feed((uint8_t)*s++);
+        }
+        return;
+    }
     while (*s) {
-        ansi_feed((uint8_t)*s++);
+        uint8_t c = (uint8_t)*s++;
+        if (c == 0x1B) {
+            while (*s && !(*s >= 0x40 && *s <= 0x7E && *s != '[')) {
+                ++s; /* an escape code: left out */
+            }
+            if (*s) {
+                ++s;
+            }
+            continue;
+        }
+        if (c == 0x0A) {
+            continue; /* RETURN is the new line */
+        }
+        if (c >= 'a' && c <= 'z') {
+            c -= 0x20;
+        } else if (c >= 'A' && c <= 'Z') {
+            c += 0x80;
+        }
+        petscii_feed(c);
     }
 }
 
@@ -105,16 +160,114 @@ static void wait_jiffies(uint8_t n) {
     }
 }
 
+/* ---- calls ------------------------------------------------------------- */
+
+/* the call was dialled from the directory: back to it when it ends */
+static uint8_t from_directory;
+
+/* a PETSCII call has ended: the next key opens the directory (which would
+ * clear the screen, the call's last words with it) */
+static uint8_t awaiting_key;
+
+/* the modem's answer to a call that didn't connect: NO CARRIER, BUSY, NO
+ * ANSWER or ERROR, watched for while calling */
+#define WATCHED 10
+static char heard[WATCHED];
+static uint8_t call_failed;
+
+static uint8_t heard_end(const char *word) {
+    uint8_t n = 0, i;
+    while (word[n]) {
+        ++n;
+    }
+    for (i = 0; i < n; ++i) {
+        if (heard[WATCHED - n + i] != word[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static void watch(uint8_t c) {
+    uint8_t i;
+    for (i = 0; i + 1 < WATCHED; ++i) {
+        heard[i] = heard[i + 1];
+    }
+    heard[WATCHED - 1] = (char)c;
+    if (heard_end("NO CARRIER") || heard_end("BUSY") || heard_end("NO ANSWER") ||
+        heard_end("ERROR")) {
+        call_failed = 1;
+    }
+}
+
+/* a byte from the modem */
+static void incoming(uint8_t c) {
+    if (calling && !online) {
+        watch(c);
+    }
+    feed(c);
+}
+
+/* what comes in drawn, for |n| jiffies */
+static void drain(uint8_t n) {
+    unsigned long until = cx16_k_rdtim() + n;
+    while (cx16_k_rdtim() < until) {
+        while (uart_ready()) {
+            incoming(uart_get());
+        }
+    }
+}
+
 /* Zimodem's way: a second of nothing, +++, a second of nothing */
 static void hang_up(void) {
     screen_status(" hanging up...");
     wait_jiffies(70);
     uart_puts("+++");
     wait_jiffies(70);
+    drain(20);
     status();
 }
 
+/* hung up, and the carrier gone (3 seconds at most), before another call */
+static void hang_up_now(void) {
+    uint8_t n;
+    hang_up();
+    for (n = 0; n < 30 && uart_carrier(); ++n) {
+        drain(6);
+    }
+    online = 0, calling = 0, call_failed = 0;
+    status();
+}
+
+static void directory(void);
+
+/* A call over, or one that never connected: back to the directory, if
+ * that's where it was dialled from. Its last words are drawn first, and
+ * Esc closes the directory to read them. */
+static void call_ended(void) {
+    status();
+    if (!from_directory) {
+        return;
+    }
+    from_directory = 0;
+    drain(60);
+    if (screen_petscii) {
+        awaiting_key = 1;
+        screen_status(" call over: a key for the directory");
+    } else {
+        directory();
+    }
+}
+
 static void send_key(uint8_t k) {
+    if (!online && k == KEY_DEL) {
+        uart_put(0x08); /* the modem's backspace, PETSCII or not */
+        return;
+    }
+    if (screen_petscii) {
+        uart_put(k); /* the keyboard types PETSCII: as it is */
+        return;
+    }
     switch (k) {
     case KEY_RETURN:
         uart_put(0x0D);
@@ -150,10 +303,26 @@ static void copy(char *to, const char *from, uint8_t room) {
     *to = 0;
 }
 
-/* a board called: ATDT, its address in quotes (the T for telnet) */
-static void dial(const char *name, const char *addr) {
-    copy(board, name, sizeof board);
-    copy(board_addr, addr, sizeof board_addr);
+/* the screen made ANSI's, if it's PETSCII's */
+static void ansi_screen(void) {
+    if (screen_petscii) {
+        screen_ansi();
+        ansi_reset();
+        status();
+    }
+}
+
+/* A board called: the screen made its terminal type's, then ATDT, its
+ * address in quotes (the T for telnet). */
+static void dial(const board_t *b) {
+    copy(board, b->name, sizeof board);
+    copy(board_addr, b->addr, sizeof board_addr);
+    if (b->emu == EMU_PETSCII) {
+        screen_petscii_mode(b->cols);
+        petscii_reset();
+    } else {
+        ansi_screen();
+    }
     print("\r\n\x1b[1;36mCalling ");
     print(board);
     print("\x1b[0m (");
@@ -162,16 +331,68 @@ static void dial(const char *name, const char *addr) {
     uart_puts("ATDT\"");
     uart_puts(board_addr);
     uart_puts("\"\r");
-    calling = 1;
+    calling = 1, call_failed = 0;
     status();
 }
 
-/* the dialling directory, and a call if one's picked */
+/* "Hang up |name|" and "and call |next|?", for asking */
+static char ask1[NAME_LEN + 12], ask2[NAME_LEN + 12];
+
+/* the dialling directory, on ANSI's 80 columns, and a call if one's
+ * picked: with a call up, it's hung up first, if that's what's wanted */
 static void directory(void) {
-    const char *name, *addr;
-    if (dir_window(&name, &addr)) {
-        dial(name, addr);
+    const board_t *b;
+    awaiting_key = 0;
+    ansi_screen();
+    b = dir_window();
+    if (!b) {
+        return;
     }
+    if (online || calling) {
+        char *p = put_text(ask1, "Hang up ");
+        p = put_text(p, board);
+        *p = 0;
+        p = put_text(ask2, "and call ");
+        p = put_text(p, b->name);
+        *p++ = '?';
+        *p = 0;
+        if (!ui_ask(ask1, ask2)) {
+            return;
+        }
+        hang_up_now();
+    }
+    dial(b);
+    from_directory = 1;
+}
+
+/* The terminal's type, the next one: ANSI, PETSCII 40 columns, PETSCII
+ * 80 columns, ANSI again. The screen is cleared, its mode changed. */
+static void next_emulation(void) {
+    if (!screen_petscii) {
+        screen_petscii_mode(40);
+        petscii_reset();
+        print("[PETSCII, 40 columns]\r\n");
+    } else if (screen_cols == 40) {
+        screen_petscii_mode(80);
+        petscii_reset();
+        print("[PETSCII, 80 columns]\r\n");
+    } else {
+        screen_ansi();
+        ansi_reset();
+        print("[ANSI]\r\n");
+    }
+    status();
+}
+
+/* a yes or no on the status line, for any screen */
+static uint8_t status_ask(const char *question) {
+    uint8_t k;
+    screen_status(question);
+    do {
+        k = keys_get();
+    } while (k != 'y' && k != 'Y' && k != 'n' && k != 'N' && k != KEY_ESC);
+    status();
+    return k == 'y' || k == 'Y';
 }
 
 /* Alt and a key: busterm's commands. 1 to quit. */
@@ -184,10 +405,21 @@ static uint8_t command(uint8_t c) {
     case 'd':
         directory();
         break;
+    case 'e':
+        next_emulation();
+        break;
     case 'h':
-        hang_up();
+        if (online || calling) {
+            hang_up();
+        }
         break;
     case 'x':
+        if (online) {
+            if (!status_ask(" Hang up and quit? Y or N")) {
+                break;
+            }
+            hang_up_now();
+        }
         return 1;
     default:
         break;
@@ -198,7 +430,7 @@ static uint8_t command(uint8_t c) {
 int main(void) {
     uint8_t bank = RAM_BANK;
     RAM_BANK = BANK_WINDOWS;
-    screen_init();
+    screen_ansi();
     ansi_reset();
     uart_init(UART_DIVISOR_115200);
     keys_init();
@@ -216,12 +448,18 @@ int main(void) {
     for (;;) {
         uint8_t k;
 
+        ansi_bs_erases = !online;
         if (uart_ready()) {
             uint8_t n = BURST;
             screen_cursor_hide();
             do {
-                ansi_feed(uart_get());
+                incoming(uart_get());
             } while (--n && uart_ready());
+        }
+        if (call_failed) {
+            call_failed = 0;
+            calling = 0;
+            call_ended();
         }
 
         k = keys_alt();
@@ -230,21 +468,32 @@ int main(void) {
         }
         k = keys_get();
         if (k) {
-            send_key(k);
+            if (awaiting_key) {
+                directory();
+            } else {
+                send_key(k);
+            }
         }
 
         if (!uart_carrier() != !online) {
             online = uart_carrier();
             online_since = cx16_k_rdtim();
-            if (online && calling) {
-                dir_called(board, board_addr);
+            if (online) {
+                if (calling) {
+                    dir_called(board, board_addr);
+                } else {
+                    from_directory = 0; /* dialled at the modem's prompt */
+                }
+                calling = 0;
+                status();
+            } else {
+                calling = 0;
+                call_ended();
             }
-            calling = 0;
-            status();
         }
         if (cx16_k_rdtim() >= next_tick) {
             next_tick = cx16_k_rdtim() + JIFFIES;
-            if (!help) {
+            if (!help && !awaiting_key) {
                 status();
             }
         }

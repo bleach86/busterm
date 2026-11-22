@@ -45,8 +45,8 @@ void dir_save(void);
 /* a call made: to the recent calls, and to its board's count, if it's one */
 void dir_called(const char *name, const char *addr);
 
-/* The directory's window. Returns 1 with the board to call in |name| and
- * |addr|, or 0 if it was closed. */
-uint8_t dir_window(const char **name, const char **addr);
+/* The directory's window. Returns the board to call, or 0 if it was
+ * closed; a recent call not in the directory is ANSI, 80 columns. */
+const board_t *dir_window(void);
 
 #endif

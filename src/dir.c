@@ -468,9 +468,34 @@ static uint8_t edit_board(board_t *b, const char *title) {
 
 /* ---- the directory --------------------------------------------------- */
 
-uint8_t dir_window(const char **name, const char **addr) {
+/* a recent call as a board: its board's, if it's in the directory */
+static board_t called;
+
+static const board_t *board_for(const call_t *c) {
+    uint8_t i;
+    for (i = 0; i < dir_count; ++i) {
+        if (same(dir[i].addr, c->addr)) {
+            return &dir[i];
+        }
+    }
+    copy(called.name, c->name, sizeof called.name);
+    copy(called.addr, c->addr, sizeof called.addr);
+    called.emu = EMU_ANSI, called.cols = 80;
+    return &called;
+}
+
+/* where the directory was left, to open there again */
+static uint8_t picked, top;
+
+const board_t *dir_window(void) {
     window_t w;
-    uint8_t picked = 0, top = 0;
+    uint8_t count = showing_recent ? recent_count : dir_count;
+    if (picked >= count) {
+        picked = count ? count - 1 : 0;
+    }
+    if (picked < top || picked >= top + LIST_ROWS) {
+        top = picked;
+    }
 
     if (!ui_open(&w, W_ROW, W_COL, W_HEIGHT, W_WIDTH, "Dialling Directory")) {
         return 0;
@@ -497,15 +522,8 @@ uint8_t dir_window(const char **name, const char **addr) {
             ui_close(&w);
             return 0;
         } else if (k == KEY_RETURN && count) {
-            if (showing_recent) {
-                *name = recent[picked].name;
-                *addr = recent[picked].addr;
-            } else {
-                *name = dir[picked].name;
-                *addr = dir[picked].addr;
-            }
             ui_close(&w);
-            return 1;
+            return showing_recent ? board_for(&recent[picked]) : &dir[picked];
         } else if (!showing_recent && (k == 'n' || k == 'N') && dir_count < DIR_MAX) {
             board_t b = {"", "", EMU_ANSI, 80, 0, ""};
             if (edit_board(&b, "New board")) {

@@ -22,6 +22,7 @@
 /* ADDR_H: bit 0 the address's bit 16, bits 7 to 4 the increment */
 #define VERA_INC1 0x10
 #define VERA_INC2 0x20
+#define VERA_DEC1 0x18 /* backwards a byte */
 
 /* the 16 colours, in VRAM */
 #define VERA_PALETTE 0x1FA00UL

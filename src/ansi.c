@@ -21,6 +21,8 @@ static uint8_t fg = 7, bg, bold, blink, reverse;
 
 static uint8_t saved_row, saved_col;
 
+uint8_t ansi_bs_erases;
+
 static void set_attr(void) {
     uint8_t f = fg | (bold ? 8 : 0);
     uint8_t b = bg | (blink ? 8 : 0); /* blink as a bright background (iCE) */
@@ -32,7 +34,7 @@ void ansi_reset(void) {
     fg = 7, bg = 0, bold = 0, blink = 0, reverse = 0;
     set_attr();
     screen_top = 0;
-    screen_bottom = SCREEN_ROWS - 1;
+    screen_bottom = screen_rows - 1;
 }
 
 /* the first parameter, or |otherwise| when it's missing or 0 */
@@ -104,9 +106,9 @@ static void sgr(void) {
 
 static void erase_display(uint8_t how) {
     if (how == 0) { /* cursor to end */
-        screen_clear_cells(screen_row, screen_col, SCREEN_COLS - screen_col);
-        if (screen_row < SCREEN_ROWS - 1) {
-            screen_clear_rows(screen_row + 1, SCREEN_ROWS - 1);
+        screen_clear_cells(screen_row, screen_col, screen_cols - screen_col);
+        if (screen_row < screen_rows - 1) {
+            screen_clear_rows(screen_row + 1, screen_rows - 1);
         }
     } else if (how == 1) { /* start to cursor */
         if (screen_row) {
@@ -114,18 +116,18 @@ static void erase_display(uint8_t how) {
         }
         screen_clear_cells(screen_row, 0, screen_col + 1);
     } else { /* all, and home, as ANSI.SYS does */
-        screen_clear_rows(0, SCREEN_ROWS - 1);
+        screen_clear_rows(0, screen_rows - 1);
         screen_goto(0, 0);
     }
 }
 
 static void erase_line(uint8_t how) {
     if (how == 0) {
-        screen_clear_cells(screen_row, screen_col, SCREEN_COLS - screen_col);
+        screen_clear_cells(screen_row, screen_col, screen_cols - screen_col);
     } else if (how == 1) {
         screen_clear_cells(screen_row, 0, screen_col + 1);
     } else {
-        screen_clear_cells(screen_row, 0, SCREEN_COLS);
+        screen_clear_cells(screen_row, 0, screen_cols);
     }
 }
 
@@ -140,7 +142,7 @@ static void csi(uint8_t final) {
         break;
     case 0x43: /* C right */
         screen_goto(screen_row,
-                    screen_col + n > SCREEN_COLS - 1 ? SCREEN_COLS - 1 : screen_col + n);
+                    screen_col + n > screen_cols - 1 ? screen_cols - 1 : screen_col + n);
         break;
     case 0x44: /* D left */
         screen_goto(screen_row, screen_col > n ? screen_col - n : 0);
@@ -169,7 +171,7 @@ static void csi(uint8_t final) {
         break;
     case 0x58: /* X erase characters */
         screen_clear_cells(screen_row, screen_col,
-                           screen_col + n > SCREEN_COLS ? SCREEN_COLS - screen_col : n);
+                           screen_col + n > screen_cols ? screen_cols - screen_col : n);
         break;
     case 0x4C: /* L insert lines */
         if (screen_row >= screen_top && screen_row <= screen_bottom) {
@@ -192,9 +194,9 @@ static void csi(uint8_t final) {
         break;
     case 0x72: /* r scrolling region */
     {
-        uint8_t top = param(0, 1) - 1, bottom = param(1, SCREEN_ROWS) - 1;
-        if (bottom >= SCREEN_ROWS) {
-            bottom = SCREEN_ROWS - 1;
+        uint8_t top = param(0, 1) - 1, bottom = param(1, screen_rows) - 1;
+        if (bottom >= screen_rows) {
+            bottom = screen_rows - 1;
         }
         if (top < bottom) {
             screen_top = top, screen_bottom = bottom;
@@ -214,7 +216,7 @@ static void csi(uint8_t final) {
             /* 6 where the cursor is; 255 (SyncTERM's) the screen's size */
             if (params[0] == 255) {
                 uint8_t row = screen_row, col = screen_col;
-                screen_row = SCREEN_ROWS - 1, screen_col = SCREEN_COLS - 1;
+                screen_row = screen_rows - 1, screen_col = screen_cols - 1;
                 reply_position();
                 screen_row = row, screen_col = col;
             } else {
@@ -251,9 +253,12 @@ void ansi_feed(uint8_t c) {
         } else if (c == 0x08) {
             if (screen_col) {
                 screen_goto(screen_row, screen_col - 1);
+                if (ansi_bs_erases) {
+                    screen_clear_cells(screen_row, screen_col, 1);
+                }
             }
         } else if (c == 0x09) {
-            screen_goto(screen_row, (screen_col | 7) + 1 > SCREEN_COLS - 1 ? SCREEN_COLS - 1
+            screen_goto(screen_row, (screen_col | 7) + 1 > screen_cols - 1 ? screen_cols - 1
                                                                            : (screen_col | 7) + 1);
         }
         /* other control codes, BEL among them, draw nothing */

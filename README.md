@@ -18,12 +18,15 @@ the PC's character set and colours, at the card's full 115,200 baud.
   line.
 - **Scrollback:** about 2,800 rows that scrolled off the top, colours and
   all, kept in the X16's banked RAM. Page Up (or Alt-B) looks back.
+- **Downloads:** YMODEM batch (YMODEM-g when the sender can, about 9 KB a
+  second) and XMODEM (CRC or checksum, 128 or 1K blocks), into a
+  `DOWNLOADS` folder on the SD card.
 - **Keeps up with the line:** the screen scrolls in VERA's hardware, so
   text pours in at the full 115,200 baud, short lines or long.
 - **The modem:** the card's Zimodem, at 115,200 baud with RTS/CTS flow
   control, so nothing is lost when the screen falls behind.
 
-Planned: capture to a file, and XMODEM and YMODEM downloads.
+Planned: capture to a file, and uploads.
 
 ## Using it
 
@@ -37,6 +40,7 @@ board and press Return to call it, or Esc for the modem's own prompt, where
 | Alt-D | The dialling directory             |
 | Alt-E | ANSI, PETSCII 40 or PETSCII 80     |
 | Alt-H | Hang up                            |
+| Alt-R | Receive a file                     |
 | Alt-S | Settings                           |
 | Alt-Z | busterm's keys, on the status line |
 | Alt-X | Quit                               |
@@ -46,6 +50,15 @@ it, and Tab shows the recent calls. Picking a board during a call asks before
 hanging up and calling it. A call made from the directory goes back to it
 when it ends; Esc closes it again to read the board's last words. A call
 dialled at the modem's prompt goes back there.
+
+To download, start the download on the board, then press Alt-R. busterm
+asks on the status line for a name, used only if the board sends XMODEM
+(YMODEM names its own files); type a new one or press Return. Its progress
+shows on the status line, and Esc stops it. Files go in a `DOWNLOADS`
+folder next to busterm, made the first time, so no board can write over
+busterm's own files; one of the same name is replaced. A file stopped
+halfway is deleted. XMODEM pads a file's last block to 128 bytes (with
+Ctrl-Z), and that's kept; YMODEM sends the size, so its files are exact.
 
 In scrollback: Up and Down move a row, Page Up and Page Down a screen, Home
 goes to the oldest row, and Esc (or Page Down at the bottom) goes back to

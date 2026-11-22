@@ -4,7 +4,8 @@
 /* The X16's banked RAM: 8 KB at $A000, the bank picked at $00; every X16
  * has banks 0 to 63. Bank 0 is the ROM's. busterm keeps its data (the
  * directory) in bank 3, which is left selected, the screen under its
- * windows in bank 1, and the scrollback in banks 8 to 63; those are
+ * windows in bank 1, a download's blocks in bank 4, and the scrollback in
+ * banks 8 to 63; those are
  * picked only while they're used. The ROM's routines leave the bank as
  * they found it. */
 
@@ -16,6 +17,7 @@
 
 #define BANK_WINDOWS 1
 #define BANK_DATA 3
+#define BANK_TRANSFER 4 /* a download's block, and its CRC table */
 #define BANK_SCROLLBACK 8
 #define BANK_SCROLLBACK_END 64 /* the first past it */
 

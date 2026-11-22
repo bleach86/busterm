@@ -21,6 +21,12 @@ uint8_t file_create(const char *name);
 /* text written to the file being written */
 void file_put(const char *s);
 
+/* |n| bytes written to the file being written */
+void file_write(const uint8_t *p, uint16_t n);
+
+/* a command to the drive, as "MD:NAME" or "CD:..": 1 if it said OK */
+uint8_t file_command(const char *cmd);
+
 /* the file closed, read or written */
 void file_close(void);
 

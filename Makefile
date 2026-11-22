@@ -2,7 +2,10 @@
 # LLVM_MOS is where its SDK is.
 LLVM_MOS ?= $(HOME)/llvm-mos
 CC := $(LLVM_MOS)/bin/mos-cx16-clang
-CFLAGS := -Os -Wall -Wextra
+# -Oz: as small as it goes. It was as fast as -Os, measured, and room
+# matters more: the program and its variables share $0801 to $9EFF with
+# the stack.
+CFLAGS := -Oz -Wall -Wextra
 
 SRC := $(wildcard src/*.c) $(wildcard src/*.s)
 HDR := $(wildcard src/*.h)

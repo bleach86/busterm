@@ -435,6 +435,9 @@ static uint8_t screen_code(uint8_t c) {
     if (c == 0x10) { /* ► */
         return '>';
     }
+    if (c == '_') {
+        return 0x64; /* PETSCII's low bar; its own _ is an arrow */
+    }
     return c;
 }
 

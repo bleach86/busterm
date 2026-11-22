@@ -14,6 +14,7 @@
 #include "scrollback.h"
 #include "settings.h"
 #include "sound.h"
+#include "transfer.h"
 #include "uart.h"
 #include "ui.h"
 
@@ -90,7 +91,7 @@ static void status(void) {
 
     if (screen_cols == 40) {
         if (help) {
-            screen_status(" Alt+ B back D dir H hang S set X quit");
+            screen_status(" Alt+ B back D dir H hang R recv X quit");
             return;
         }
         *p++ = ' ';
@@ -99,7 +100,7 @@ static void status(void) {
         p = put_online(p);
     } else {
         if (help) {
-            screen_status(" Alt+  B scrollback  D directory  E type  H hang up  S settings  X quit"
+            screen_status(" Alt+ B back  D dir  E type  H hang up  R receive  S settings  X quit"
                           "  Z back");
             return;
         }
@@ -419,6 +420,77 @@ static void next_emulation(void) {
     status();
 }
 
+/* a line typed on the status line, for any screen, into |buf| (room for
+ * |size| - 1), what's there typed over or added to: 1 for Return, 0 for
+ * Esc */
+static uint8_t status_input(const char *prompt, char *buf, uint8_t size) {
+    uint8_t fresh = 1;
+    for (;;) {
+        uint8_t k, n = 0;
+        char *p = put_text(line, prompt);
+        p = put_text(p, buf);
+        *p++ = '_';
+        *p = 0;
+        screen_status(line);
+        do {
+            k = keys_get();
+        } while (!k);
+        while (buf[n]) {
+            ++n;
+        }
+        if (k == KEY_RETURN) {
+            return 1;
+        } else if (k == KEY_ESC) {
+            return 0;
+        } else if (k == KEY_DEL) {
+            if (n) {
+                buf[n - 1] = 0;
+            }
+            fresh = 0;
+            continue;
+        }
+        if (screen_petscii) {
+            /* PETSCII's letters as they look: unshifted lower case */
+            if (k >= 0x41 && k <= 0x5A) {
+                k += 0x20;
+            } else if (k >= 0xC1 && k <= 0xDA) {
+                k -= 0x80;
+            }
+        }
+        if (k > ' ' && k < 0x7F) {
+            if (fresh) {
+                n = 0; /* a new name, over the old */
+                fresh = 0;
+            }
+            if (n < size - 1) {
+                buf[n] = (char)k;
+                buf[n + 1] = 0;
+            }
+        }
+    }
+}
+
+/* a line about a transfer, in the terminal */
+static void say(const char *s) {
+    print("\r\n\x1b[1;36m");
+    print(s);
+    print("\x1b[0m\r\n");
+}
+
+/* XMODEM's file name, kept for the next */
+static char xname[25] = "DOWNLOAD.BIN";
+
+/* Files from the board, once it's sending */
+static void receive(void) {
+    screen_cursor_hide();
+    if (status_input(screen_cols == 40 ? " xmodem name: "
+                                       : " Receive (YMODEM names its files). XMODEM's name: ",
+                     xname, sizeof xname)) {
+        transfer_receive(xname, say);
+    }
+    status();
+}
+
 /* a yes or no on the status line, for any screen */
 static uint8_t status_ask(const char *question) {
     uint8_t k;
@@ -452,6 +524,9 @@ static uint8_t command(uint8_t c) {
         ansi_screen();
         settings_window();
         status();
+        break;
+    case 'r':
+        receive();
         break;
     case 'h':
         if (online || calling) {

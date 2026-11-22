@@ -10,11 +10,11 @@
 /* the file being read has no more */
 static uint8_t at_end;
 
-/* the drive's status: "00, OK" */
-static uint8_t drive_ok(void) {
+/* a command to the drive (or none), and its status: 1 for "00, OK" */
+static uint8_t command(const char *cmd) {
     uint8_t a, b;
     cbm_k_setlfs(CMD, SD, CMD);
-    cbm_k_setnam("");
+    cbm_k_setnam(cmd);
     if (cbm_k_open()) {
         cbm_k_close(CMD);
         return 0;
@@ -28,6 +28,10 @@ static uint8_t drive_ok(void) {
     cbm_k_close(CMD);
     return a == '0' && b == '0';
 }
+
+static uint8_t drive_ok(void) { return command(""); }
+
+uint8_t file_command(const char *cmd) { return command(cmd); }
 
 uint8_t file_open(const char *name) {
     cbm_k_setlfs(LFN, SD, 2);
@@ -75,7 +79,7 @@ uint8_t file_line(char *buf, uint8_t size) {
 uint8_t file_create(const char *name) {
     cbm_k_setlfs(LFN, SD, 2);
     cbm_k_setnam(name);
-    if (cbm_k_open() || cbm_k_chkout(LFN)) {
+    if (cbm_k_open() || !drive_ok() || cbm_k_chkout(LFN)) {
         cbm_k_clrch();
         cbm_k_close(LFN);
         return 0;
@@ -86,6 +90,33 @@ uint8_t file_create(const char *name) {
 void file_put(const char *s) {
     while (*s) {
         cbm_k_chrout((uint8_t)*s++);
+    }
+}
+
+/* the ROM's MCIOUT: up to |n| bytes from |p| to the file, a block at a
+ * time; how many it took, or 0 if it can't (then CHROUT's used) */
+static uint8_t mciout(const uint8_t *p, uint8_t n) {
+    uint8_t lo = (uint8_t)(uint16_t)p, hi = (uint8_t)((uint16_t)p >> 8), failed;
+    __asm__ volatile("clc\n"
+                     "jsr $feb1\n"
+                     "lda #0\n"
+                     "rol\n"
+                     : "=a"(failed), "+x"(lo), "+y"(hi)
+                     : "a"(n)
+                     : "c", "v", "memory");
+    return failed ? 0 : lo;
+}
+
+void file_write(const uint8_t *p, uint16_t n) {
+    while (n) {
+        uint8_t done = mciout(p, n > 128 ? 128 : (uint8_t)n);
+        if (!done) {
+            break;
+        }
+        p += done, n -= done;
+    }
+    while (n--) {
+        cbm_k_chrout(*p++);
     }
 }
 

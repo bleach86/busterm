@@ -16,6 +16,20 @@
 #define VERA_DATA0 (*(volatile uint8_t *)0x9F23)
 #define VERA_DATA1 (*(volatile uint8_t *)0x9F24)
 #define VERA_CTRL (*(volatile uint8_t *)0x9F25)
+/* DC_VIDEO with DCSEL 0 (bit 4 shows layer 0), DC_VSTOP with DCSEL 1 (the
+ * picture's last line, in 2s of the 480) */
+#define VERA_DC_VIDEO (*(volatile uint8_t *)0x9F29)
+#define VERA_DC_VSTOP (*(volatile uint8_t *)0x9F2C)
+#define VERA_DCSEL1 0x02
+#define VERA_LAYER0_ON 0x10
+#define VERA_L0_CONFIG (*(volatile uint8_t *)0x9F2D)
+#define VERA_L0_MAPBASE (*(volatile uint8_t *)0x9F2E)
+#define VERA_L0_TILEBASE (*(volatile uint8_t *)0x9F2F)
+#define VERA_L0_HSCROLL_L (*(volatile uint8_t *)0x9F30)
+#define VERA_L0_HSCROLL_H (*(volatile uint8_t *)0x9F31)
+#define VERA_L0_VSCROLL_L (*(volatile uint8_t *)0x9F32)
+#define VERA_L0_VSCROLL_H (*(volatile uint8_t *)0x9F33)
+#define VERA_L1_CONFIG (*(volatile uint8_t *)0x9F34)
 #define VERA_L1_MAPBASE (*(volatile uint8_t *)0x9F35)
 #define VERA_L1_TILEBASE (*(volatile uint8_t *)0x9F36)
 

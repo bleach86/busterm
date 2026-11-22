@@ -16,8 +16,10 @@ the PC's character set and colours, at the card's full 115,200 baud.
   terminal type and columns, kept on the SD card.
 - **Tells the board its screen size:** 80 by 29, under busterm's status
   line.
+- **Keeps up with the line:** the screen scrolls in VERA's hardware, so
+  text pours in at the full 115,200 baud, short lines or long.
 - **The modem:** the card's Zimodem, at 115,200 baud with RTS/CTS flow
-  control, so nothing is lost while the screen scrolls.
+  control, so nothing is lost when the screen falls behind.
 
 Planned: scrollback, capture to a file, and XMODEM and YMODEM downloads.
 

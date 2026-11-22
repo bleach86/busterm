@@ -225,16 +225,18 @@ static void watch(uint8_t c) {
  * which every ZMODEM sender starts with; or lrzsz's XMODEM, which asks
  * for the receiver in words. YMODEM's sender says nothing: Alt-R. */
 static const char zmodem_start[] = "**\x18"
-                                   "B00";
+                                   "B0";
 static const char xmodem_start[] = "receive command now.";
 static uint8_t z_at, x_at;
-static uint8_t begun; /* 1 ZMODEM, 2 XMODEM */
+static uint8_t begun; /* 1 ZMODEM, 2 XMODEM, 3 ZMODEM's receiver */
 
 static void watch_downloads(uint8_t c) {
-    if (c == (uint8_t)zmodem_start[z_at]) {
-        if (!zmodem_start[++z_at]) {
-            z_at = 0, begun = 1;
-        }
+    if (!zmodem_start[z_at]) {
+        /* "B00", a sender's ZRQINIT; "B01", a receiver's ZRINIT */
+        z_at = 0;
+        begun = c == '0' ? 1 : c == '1' ? 3 : 0;
+    } else if (c == (uint8_t)zmodem_start[z_at]) {
+        ++z_at;
     } else {
         z_at = c != '*' ? 0 : z_at == 2 ? 2 : 1;
     }
@@ -465,6 +467,8 @@ static void receive(uint8_t how) {
     }
     if (how == 1) {
         transfer_zmodem(say);
+    } else if (how == 3) {
+        transfer_upload(say);
     } else {
         transfer_receive("DOWNLOAD.BIN", say);
     }

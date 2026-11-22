@@ -1,6 +1,7 @@
 #include "files.h"
 
 #include <cbm.h>
+#include <cx16.h>
 
 #define SD 8
 #define LFN 2
@@ -74,6 +75,65 @@ uint8_t file_line(char *buf, uint8_t size) {
     }
     buf[n] = 0;
     return n || !at_end;
+}
+
+uint8_t file_listing(void) {
+    cbm_k_setlfs(LFN, SD, 0);
+    cbm_k_setnam("$=L");
+    if (cbm_k_open() || cbm_k_chkin(LFN)) {
+        cbm_k_clrch();
+        cbm_k_close(LFN);
+        at_end = 1;
+        return 0;
+    }
+    at_end = 0;
+    return 1;
+}
+
+int16_t file_byte(void) {
+    uint8_t c, st;
+    if (at_end) {
+        return -1;
+    }
+    c = cbm_k_chrin();
+    st = cbm_k_readst();
+    if (st & ~ST_EOF) {
+        at_end = 1;
+        return -1;
+    }
+    if (st & ST_EOF) {
+        at_end = 1;
+    }
+    return c;
+}
+
+uint16_t file_read(uint8_t *p, uint16_t n) {
+    uint16_t got = 0;
+    /* the file the input only while it's read: GETIN, the keyboard's,
+     * reads whatever the input is */
+    if (cbm_k_chkin(LFN)) {
+        return 0;
+    }
+    while (got < n && !at_end) {
+        uint16_t want = n - got > 255 ? 255 : n - got;
+        long read = cx16_k_macptr((uint8_t)want, 0, p + got);
+        uint8_t st = cbm_k_readst();
+        if (read < 0) {
+            /* no MACPTR: a byte at a time */
+            int16_t c = file_byte();
+            if (c < 0) {
+                break;
+            }
+            p[got++] = (uint8_t)c;
+            continue;
+        }
+        got += (uint16_t)read;
+        if (st & ST_EOF || st & ~ST_EOF || !read) {
+            at_end = 1;
+        }
+    }
+    cbm_k_clrch();
+    return got;
 }
 
 uint8_t file_create(const char *name) {

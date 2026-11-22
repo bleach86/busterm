@@ -15,6 +15,17 @@ uint8_t file_open(const char *name);
  * end; 0 when there are no more */
 uint8_t file_line(char *buf, uint8_t size);
 
+/* the folder's long listing ("$=L") opened, to read with file_byte() */
+uint8_t file_listing(void);
+
+/* the next byte of the file being read, or -1 at its end */
+int16_t file_byte(void);
+
+/* up to |n| bytes of the file being read into |p|, by the ROM's MACPTR,
+ * a block at a time: how many there were (fewer at the end). The input's
+ * the keyboard again after, for GETIN. */
+uint16_t file_read(uint8_t *p, uint16_t n);
+
 /* opened to write, over what was there; 0 if it can't be */
 uint8_t file_create(const char *name);
 

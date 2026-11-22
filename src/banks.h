@@ -19,6 +19,7 @@
 #define BANK_DATA 3
 #define BANK_TRANSFER 4 /* a download's block, and its CRC table */
 #define BANK_ZMODEM 6   /* a ZMODEM subpacket, up to 8K */
+#define BANK_LIST 7     /* the files to send, listed */
 #define BANK_SCROLLBACK 8
 #define BANK_SCROLLBACK_END 64 /* the first past it */
 

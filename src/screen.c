@@ -3,7 +3,6 @@
 #include <cbm.h>
 #include <cx16.h>
 
-#include "font.h"
 #include "scrollback.h"
 #include "vera.h"
 
@@ -29,6 +28,7 @@
 #define PETSCII_MODE 0x8F /* PETSCII again */
 #define LOWER_CASE 0x0E   /* PETSCII's lower and upper case set */
 #define UPPER_CASE 0x8E   /* its upper case and graphics set */
+#define CHARSET_CP437 7   /* the ROM's own, the PC's character set */
 
 #define ANSI_STATUS 0x60    /* black on cyan, the PC's colours */
 #define PETSCII_STATUS 0x30 /* black on cyan, the C64's */
@@ -167,17 +167,13 @@ static void mode(uint8_t which, uint8_t cols, uint8_t rows) {
 }
 
 void screen_ansi(void) {
-    uint16_t i;
     screen_petscii = 0;
     screen_attr = ANSI_START;
     status_attr = ANSI_STATUS;
     cbm_k_chrout(ISO_MODE);
     mode(MODE_80X30, 80, 29);
     palette(cga);
-    vera_port1((uint32_t)(VERA_L1_TILEBASE & 0xFC) << 9, VERA_INC1);
-    for (i = 0; i < sizeof font_cp437; ++i) {
-        VERA_DATA1 = font_cp437[i];
-    }
+    cx16_k_screen_set_charset(CHARSET_CP437, 0);
 }
 
 void screen_petscii_mode(uint8_t cols) {

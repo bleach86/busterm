@@ -35,7 +35,7 @@
 enum { GOT_BLOCK, GOT_BAD, GOT_NOTHING, GOT_EOT, GOT_CAN, GOT_STOP, GOT_NONE };
 
 static void (*say)(const char *);
-static uint8_t use_crc, ymodem, streaming, zmodem;
+static uint8_t use_crc, ymodem, streaming, zmodem, sending;
 static uint8_t blk;   /* the block's number */
 static uint16_t len;  /* and length */
 static char name[41]; /* the file's */
@@ -196,7 +196,7 @@ static void progress(uint8_t now) {
             p = put_number(p, size);
         }
     } else {
-        p = put_text(p, " receiving ");
+        p = put_text(p, sending ? " sending " : " receiving ");
         p = put_text(p, name[0] ? name : "...");
         *p++ = ' ', *p++ = ' ';
         p = put_number(p, got);
@@ -468,6 +468,7 @@ static void receive(const char *xname) {
 #define ZACK 3
 #define ZFILE 4
 #define ZNAK 6
+#define ZSKIP 5
 #define ZFIN 8
 #define ZRPOS 9
 #define ZDATA 10
@@ -481,6 +482,9 @@ static void receive(const char *xname) {
 #define ZCRCW 'k'
 #define ZRUB0 'l' /* $7F */
 #define ZRUB1 'm' /* $FF */
+
+/* ZFILE's ZF0: binary, as it is */
+#define ZCBIN 1
 
 /* ZRINIT's flags: both ways at once, and receiving while writing */
 #define CANFDX 0x01
@@ -608,10 +612,10 @@ static uint16_t hex_byte(void) {
 
 /* The next header, what's before it passed over: its type, hdr[] filled;
  * or TIMEOUT, STOPPED, Z_BAD (its CRC wrong, or one asked not to be
- * sent) or Z_CANCEL. */
-static uint16_t zheader(void) {
+ * sent) or Z_CANCEL. |pads|: its ZPAD read already. */
+static uint16_t zheader_from(uint8_t pads) {
     uint16_t c;
-    uint8_t i, pads = 0, cans = 0, hex;
+    uint8_t i, cans = 0, hex;
     for (;;) {
         c = zraw();
         if (c > 0xFF) {
@@ -651,6 +655,8 @@ static uint16_t zheader(void) {
     }
     return hdr[0];
 }
+
+static uint16_t zheader(void) { return zheader_from(0); }
 
 /* A subpacket, into its bank: its end's letter (ZCRCE to ZCRCW), zlen
  * its length; or TIMEOUT, STOPPED, Z_BAD or Z_CANCEL. */
@@ -840,12 +846,399 @@ static void zreceive(void) {
     }
 }
 
+/* ZMODEM's sending: a file of DOWNLOADS, picked on the status line,
+ * as a board's receiver (its ZRINIT) waits for one. Binary headers with a
+ * 16-bit CRC, 1K subpackets streamed (ZCRCG), the board's ZRPOS heeded. */
+
+/* the files listed, in their bank: a name and its size each */
+#define LIST_BANK BANK_LIST
+#define ENTRY 44 /* 40 of name, 4 of size */
+#define MOST_FILES (BANK_SIZE / ENTRY)
+static uint8_t listed;
+
+/* a byte of a binary header or subpacket, ZDLE's escapes where needed */
+static void zput(uint8_t c) {
+    if (c == ZDLE || (c & 0x7F) == 0x10 || (c & 0x7F) == 0x11 || (c & 0x7F) == 0x13) {
+        uart_put(ZDLE);
+        uart_put(c ^ 0x40);
+    } else {
+        uart_put(c);
+    }
+}
+
+/* a binary header: |type| and hdr[1] to hdr[4] */
+static void send_binary(uint8_t type) {
+    uint8_t i;
+    hdr[0] = type;
+    uart_put(ZPAD), uart_put(ZDLE), uart_put(ZBIN);
+    crc_hi = crc_lo = 0;
+    for (i = 0; i < 5; ++i) {
+        crc(hdr[i]);
+        zput(hdr[i]);
+    }
+    i = crc_lo;
+    zput(crc_hi);
+    zput(i);
+}
+
+static void binary_pos(uint8_t type, unsigned long pos) {
+    hdr[1] = (uint8_t)pos, hdr[2] = (uint8_t)(pos >> 8);
+    hdr[3] = (uint8_t)(pos >> 16), hdr[4] = (uint8_t)(pos >> 24);
+    send_binary(type);
+}
+
+/* a subpacket of |n| bytes at |p|, in ZMODEM's bank if |banked|, ended
+ * by |end| */
+static void send_sub(const uint8_t *p, uint16_t n, uint8_t end, uint8_t banked) {
+    uint8_t c, lo;
+    crc_hi = crc_lo = 0;
+    while (n--) {
+        if (banked) {
+            RAM_BANK = ZBANK;
+            c = *p++;
+            RAM_BANK = BANK_TRANSFER;
+        } else {
+            c = *p++;
+        }
+        crc(c);
+        zput(c);
+    }
+    crc(end);
+    uart_put(ZDLE);
+    uart_put(end);
+    lo = crc_lo;
+    zput(crc_hi);
+    zput(lo);
+    if (end == ZCRCW) {
+        uart_put(XON);
+    }
+}
+
+/* DOWNLOADS's files, from its long listing ("$=L": a BASIC program's
+ * lines, each its size in K, the name in quotes, its type, its date,
+ * and its size in bytes, 8 hex digits, last), into their bank */
+static void list_files(void) {
+    static char line[48];
+    int16_t c;
+    uint8_t n, i, quotes, fresh, first = 1;
+    unsigned long bytes;
+
+    listed = 0;
+    if (!file_listing()) {
+        return;
+    }
+    file_byte(), file_byte(); /* its load address */
+    for (;;) {
+        if (file_byte() < 0 || file_byte() < 0) { /* a line's link */
+            break;
+        }
+        file_byte(), file_byte(); /* its number */
+        n = 0, quotes = 0, bytes = 0, fresh = 1;
+        while ((c = file_byte()) > 0) {
+            /* the last run of hex digits: the size */
+            uint8_t d = (uint8_t)c;
+            d = d >= '0' && d <= '9' ? d - '0' : d >= 'A' && d <= 'F' ? d - 'A' + 10 : 0xFF;
+            if (d != 0xFF) {
+                bytes = fresh ? d : bytes << 4 | d;
+                fresh = 0;
+            } else {
+                fresh = 1;
+            }
+            if (c == '"') {
+                ++quotes;
+            } else if (quotes == 1 && n < 40) {
+                line[n++] = (char)c;
+            } else if (quotes == 2 && c == 'D' && n) {
+                quotes = 3; /* DIR: a folder, not sent */
+            }
+        }
+        if (c < 0) {
+            break;
+        }
+        if (first) {
+            first = 0; /* the card's own name */
+            continue;
+        }
+        if (quotes != 2 || !n || listed == MOST_FILES) {
+            continue;
+        }
+        line[n] = 0;
+        RAM_BANK = LIST_BANK;
+        for (i = 0; i <= n; ++i) {
+            BANKED[listed * ENTRY + i] = (uint8_t)line[i];
+        }
+        *(unsigned long *)(BANKED + listed * ENTRY + 40) = bytes;
+        RAM_BANK = BANK_TRANSFER;
+        ++listed;
+    }
+    file_close();
+}
+
+/* file |i| of those listed, as |name| and |size| */
+static void listed_file(uint8_t i) {
+    uint8_t j;
+    RAM_BANK = LIST_BANK;
+    for (j = 0; j < 40 && (name[j] = (char)BANKED[i * ENTRY + j]); ++j) {
+    }
+    name[j] = 0;
+    size = *(unsigned long *)(BANKED + i * ENTRY + 40);
+    RAM_BANK = BANK_TRANSFER;
+}
+
+/* a file picked on the status line: its number, or -1 for none */
+static int16_t pick(void) {
+    static char line[96];
+    uint8_t i = 0, k;
+    for (;;) {
+        char *p = line;
+        listed_file(i);
+        p = put_text(p, screen_cols == 40 ? " send " : " Send which file?  ");
+        p = put_text(p, name);
+        *p++ = ' ', *p++ = ' ';
+        p = put_number(p, size);
+        if (screen_cols != 40) {
+            p = put_text(p, " bytes  (");
+            p = put_number(p, i + 1);
+            p = put_text(p, " of ");
+            p = put_number(p, listed);
+            p = put_text(p, ")  Up/Down  Return  Esc");
+        }
+        *p = 0;
+        screen_status(line);
+        do {
+            k = keys_get();
+        } while (!k);
+        if (k == KEY_UP || k == KEY_LEFT) {
+            i = i ? i - 1 : listed - 1;
+        } else if (k == KEY_DOWN || k == KEY_RIGHT) {
+            i = i + 1 < listed ? i + 1 : 0;
+        } else if (k == KEY_RETURN) {
+            return i;
+        } else if (k == KEY_ESC) {
+            return -1;
+        }
+    }
+}
+
+/* the file opened to read, at |pos| */
+static uint8_t open_at(unsigned long pos) {
+    char *p = put_text(spec, name);
+    put_text(p, ",S,R")[0] = 0;
+    file_close();
+    if (!file_open(spec)) {
+        return 0;
+    }
+    while (pos) {
+        uint16_t n = pos > 1024 ? 1024 : (uint16_t)pos;
+        RAM_BANK = ZBANK;
+        n = file_read(BANKED, n);
+        RAM_BANK = BANK_TRANSFER;
+        if (!n) {
+            return 0;
+        }
+        pos -= n;
+    }
+    return 1;
+}
+
+/* What the board's said while it's sent to, not waited for: a header,
+ * if one's begun (a ZRPOS, say, or its CANs), else NOTHING_SAID */
+#define NOTHING_SAID 0xFFFF
+static uint16_t board_said(void) {
+    uint8_t cans = 0;
+    while (uart_ready()) {
+        uint8_t c = uart_get();
+        if (c == ZPAD) {
+            return zheader_from(1);
+        }
+        if (c != CAN) {
+            cans = 0;
+        } else if (++cans == 5) {
+            return Z_CANCEL;
+        }
+    }
+    return NOTHING_SAID;
+}
+
+/* what's come while a file was picked thrown away, till a tenth of a
+ * second's quiet */
+static void quieten(void) {
+    while (uart_get_within(SECOND / 10)) {
+    }
+}
+
+/* a header the board sends, while it's sent: stopped (1) or not */
+static uint8_t stopped_by(uint16_t t) {
+    if (t == STOPPED || t == Z_CANCEL) {
+        if (t == STOPPED) {
+            zcancel();
+        }
+        file_close();
+        tell(t == STOPPED ? "stopped sending" : "the board stopped", 0);
+        return 1;
+    }
+    return 0;
+}
+
+static void zsend(void) {
+    static uint8_t info[56];
+    uint8_t tries, *q;
+    uint16_t t, n;
+    unsigned long pos = 0;
+
+    zmodem = 1, sending = 1, got = 0;
+    progress(1);
+    quieten();
+
+    /* the board's receiver, asked again to be sure it's there */
+    for (tries = 0;; ++tries) {
+        hdr[1] = hdr[2] = hdr[3] = hdr[4] = 0;
+        send_header(ZRQINIT);
+        t = zheader();
+        if (t == ZRINIT) {
+            break;
+        }
+        if (stopped_by(t)) {
+            return;
+        }
+        if (tries == 10) {
+            tell("the board didn't answer", 0);
+            return;
+        }
+    }
+
+    /* ZFILE: its name and size (its time left out: the X16's clock has
+     * no time zone, and the board keeps its own); the board's ZRPOS,
+     * where to start */
+    q = (uint8_t *)put_text((char *)info, name);
+    *q++ = 0;
+    q = (uint8_t *)put_number((char *)q, size);
+    *q++ = 0;
+    for (tries = 0;; ++tries) {
+        hdr[1] = hdr[2] = hdr[3] = 0;
+        hdr[4] = ZCBIN;
+        send_binary(ZFILE);
+        send_sub(info, (uint16_t)(q - info), ZCRCW, 0);
+        t = zheader();
+        if (t == ZRPOS) {
+            pos = header_pos();
+            break;
+        }
+        if (t == ZSKIP) {
+            tell("the board didn't want", 0);
+            goto finish;
+        }
+        if (stopped_by(t)) {
+            return;
+        }
+        if (tries == 10) {
+            zcancel();
+            tell("the board didn't answer", 0);
+            return;
+        }
+    }
+
+    for (;;) {
+        /* its data, from |pos| */
+        if (!open_at(pos)) {
+            zcancel();
+            tell("couldn't read", 0);
+            return;
+        }
+        binary_pos(ZDATA, pos);
+        for (;;) {
+            RAM_BANK = ZBANK;
+            n = file_read(BANKED, 1024);
+            RAM_BANK = BANK_TRANSFER;
+            send_sub(BANKED, n, n < 1024 ? ZCRCE : ZCRCG, 1);
+            pos += n;
+            got = pos;
+            progress(0);
+            if (keys_get() == KEY_ESC) {
+                stopped_by(STOPPED);
+                return;
+            }
+            if (n < 1024) {
+                break;
+            }
+            /* the board's said something: a ZRPOS, to go back */
+            t = board_said();
+            if (stopped_by(t)) {
+                return;
+            }
+            if (t == ZRPOS) {
+                pos = header_pos();
+                goto again;
+            }
+        }
+        /* its end; the board's ZRINIT, all there, or ZRPOS */
+        for (tries = 0;; ++tries) {
+            binary_pos(ZEOF, pos);
+            t = zheader();
+            if (t == ZRINIT) {
+                file_close();
+                progress(1);
+                tell("sent", 1);
+                goto finish;
+            }
+            if (stopped_by(t)) {
+                return;
+            }
+            if (t == ZRPOS) {
+                pos = header_pos();
+                break;
+            }
+            if (tries == 5) {
+                zcancel();
+                file_close();
+                tell("the board didn't answer", 0);
+                return;
+            }
+        }
+    again:;
+    }
+
+finish:
+    /* ZFIN each way, and "OO" */
+    for (tries = 0; tries < 5; ++tries) {
+        hdr[1] = hdr[2] = hdr[3] = hdr[4] = 0;
+        send_header(ZFIN);
+        if (zheader() == ZFIN) {
+            /* its header's end, CR and LF, not for the screen */
+            uart_get_within(SECOND / 2);
+            uart_get_within(SECOND / 4);
+            break;
+        }
+    }
+    uart_put('O'), uart_put('O');
+}
+
+/* a file listed, picked and sent; or none, the board told so */
+static void upload(const char *unused) {
+    int16_t i;
+    (void)unused;
+    list_files();
+    if (!listed) {
+        zcancel();
+        tell("nothing in DOWNLOADS to send", 0);
+        return;
+    }
+    i = pick();
+    if (i < 0) {
+        zcancel();
+        tell("nothing sent", 0);
+        return;
+    }
+    listed_file((uint8_t)i);
+    zsend();
+}
+
 /* |receiver| run in the DOWNLOADS folder, made if it isn't there */
 static void in_downloads(void (*receiver)(const char *), const char *xname,
                          void (*said)(const char *)) {
     uint8_t bank = RAM_BANK;
     say = said;
-    name[0] = 0, zmodem = 0;
+    name[0] = 0, zmodem = 0, sending = 0;
     if (!uart_carrier()) {
         tell("no call to receive from", 0);
         return;
@@ -873,3 +1266,5 @@ void transfer_zmodem(void (*said)(const char *)) { in_downloads(zreceive_named, 
 void transfer_receive(const char *xname, void (*said)(const char *)) {
     in_downloads(receive, xname, said);
 }
+
+void transfer_upload(void (*said)(const char *)) { in_downloads(upload, 0, said); }

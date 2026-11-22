@@ -22,12 +22,13 @@ the PC's character set and colours, at the card's full 115,200 baud.
   (about 10 KB a second); YMODEM batch (YMODEM-g when the sender can) and
   XMODEM (CRC or checksum, 128 or 1K blocks). Into a `DOWNLOADS` folder on
   the SD card.
+- **Uploads:** ZMODEM, started by itself when the board asks for a file:
+  pick one of `DOWNLOADS` on the status line, and it's sent (about 10 KB
+  a second).
 - **Keeps up with the line:** the screen scrolls in VERA's hardware, so
   text pours in at the full 115,200 baud, short lines or long.
 - **The modem:** the card's Zimodem, at 115,200 baud with RTS/CTS flow
   control, so nothing is lost when the screen falls behind.
-
-Planned: capture to a file, and uploads.
 
 ## Using it
 
@@ -56,7 +57,12 @@ To download, pick the file on the board and choose ZMODEM: busterm sees it
 start and receives it, nothing to press. With YMODEM, whose sender says
 nothing to start, press Alt-R once the board's waiting; XMODEM from lrzsz
 (as most boards have) starts by itself too, its file named DOWNLOAD.BIN.
-The progress shows on the status line, and Esc stops it. Files go in a `DOWNLOADS`
+The progress shows on the status line, and Esc stops it.
+
+To upload, choose upload on the board, with ZMODEM: busterm sees the board
+waiting and asks on the status line which file of `DOWNLOADS` to send (Up
+and Down go through them, with their sizes; Return sends it; Esc sends
+none, and tells the board so). Files go in a `DOWNLOADS`
 folder next to busterm, made the first time, so no board can write over
 busterm's own files; one of the same name is replaced. A file stopped
 halfway is deleted. XMODEM pads a file's last block to 128 bytes (with
@@ -91,10 +97,9 @@ With the [llvm-mos SDK](https://github.com/llvm-mos/llvm-mos-sdk) in
 make
 ```
 
-`tools/mkfont.py` makes `src/font.c`, the character set, from Daniel
-Hepper's public-domain [font8x8](https://github.com/dhepper/font8x8), kept
-in `tools/font8x8/`.
+The PC's character set is the X16 ROM's own (its CP437 set, which R49
+has).
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE). The font8x8 glyphs are public domain.
+MIT. See [LICENSE](LICENSE).

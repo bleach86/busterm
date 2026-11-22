@@ -18,4 +18,9 @@ void transfer_receive(const char *xname, void (*say)(const char *));
  * ZRQINIT, which busterm watches for), into the same folder */
 void transfer_zmodem(void (*say)(const char *));
 
+/* A file of DOWNLOADS sent by ZMODEM, picked on the status line, as the
+ * board's receiver waits for it (its ZRINIT, "**", ZDLE, "B01", watched
+ * for too) */
+void transfer_upload(void (*say)(const char *));
+
 #endif

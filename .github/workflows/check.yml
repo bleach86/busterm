@@ -1,5 +1,6 @@
 # Every push and pull request: the formatting, a build with warnings as
-# errors, enough room left for the stack, and the build kept as BUSTERM.PRG.
+# errors, enough room left for the stack, the bank's code checked, and the
+# build kept as BUSTERM.PRG and BUSTERM.BNK.
 name: Check
 
 on:
@@ -21,11 +22,13 @@ jobs:
       # The SDK's own clang-format, so the format is the one it gives here.
       - run: ~/llvm-mos/bin/clang-format --dry-run --Werror src/*.c src/*.h
       - run: make CFLAGS="-Oz -Wall -Wextra -Werror"
-      - run: make room
+      - run: make room bankcheck
       - uses: actions/upload-artifact@v7
         with:
           name: busterm
-          path: BUSTERM.PRG
+          path: |
+            BUSTERM.PRG
+            BUSTERM.BNK
 
   format:
     runs-on: ubuntu-latest

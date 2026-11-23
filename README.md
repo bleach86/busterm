@@ -12,9 +12,11 @@ are welcome.
 
 ## Getting it
 
-`BUSTERM.PRG` is on the [releases](../../releases) page, alone or in a zip
-with this README. Put it on the X16's SD card, then `LOAD "BUSTERM.PRG"` and
-`RUN`.
+`BUSTERM.PRG` and `BUSTERM.BNK` are on the [releases](../../releases) page,
+alone or in a zip with this README. Put both on the X16's SD card, in the
+same folder, then `LOAD "BUSTERM.PRG"` and `RUN`. `BUSTERM.BNK` is busterm's
+ZMODEM, which it loads into the X16's banked RAM as it starts; without it,
+everything else works, and busterm says so.
 
 ## What it does so far
 
@@ -35,8 +37,9 @@ with this README. Put it on the X16's SD card, then `LOAD "BUSTERM.PRG"` and
   XMODEM (CRC or checksum, 128 or 1K blocks). Into a `FILES` folder on the
   SD card.
 - **Uploads:** ZMODEM, started by itself when the board asks for a file:
-  pick one of `FILES` on the status line, and it's sent (about 10 KB
-  a second).
+  pick one of `FILES` in a window, and it's sent (about 10 KB
+  a second). YMODEM (1K blocks) and XMODEM (128-byte blocks) too, started
+  by themselves from boards with lrzsz, for boards without ZMODEM.
 - **Capture:** what the board sends, its ANSI or PETSCII codes and all,
   added to a file in `FILES`, so a screen captured is an `.ANS` (or
   `.SEQ`) file.
@@ -80,12 +83,17 @@ To download, pick the file on the board and choose ZMODEM: busterm sees it
 start and receives it, nothing to press. With YMODEM, whose sender says
 nothing to start, press Alt-R once the board's waiting; XMODEM from lrzsz
 (as most boards have) starts by itself too, its file named DOWNLOAD.BIN.
-The progress shows on the status line, and Esc stops it.
+The progress shows in a window over the terminal (the file, how much of it, a
+bar), or on a PETSCII screen on the status line, and Esc stops it.
 
 To upload, choose upload on the board, with ZMODEM: busterm sees the board
-waiting and asks on the status line which file of `FILES` to send (Up
+waiting and asks in a window (on a PETSCII screen, the status line) which
+file of `FILES` to send (Up
 and Down go through them, with their sizes; Return sends it; Esc sends
-none, and tells the board so). Files go in a `FILES` folder next to
+none, and tells the board so). YMODEM and XMODEM uploads start the same
+way on boards that use lrzsz (as most do), which say so as they start
+waiting ("rz waiting to receive.", "rz: ready to receive"). Files go in a
+`FILES` folder next to
 busterm, made the first time, so no board can write over busterm's own
 files; one of the same name is replaced. In Open Bus,
 `FILES` is a folder on the computer (Documents, `Open Bus/X16 Files`, as
@@ -131,11 +139,16 @@ make
 The PC's character set is the X16 ROM's own (its CP437 set, which R49
 has).
 
-busterm and its variables share the X16's main RAM with the stack, which
-grows down from $9F00. `make room` says how much is left for the stack and
-fails under 512 bytes. The checks on GitHub run it, with the build (warnings
+`make` builds `BUSTERM.PRG` and `BUSTERM.BNK`. busterm and its variables
+share the X16's main RAM with the stack, which grows down from $9F00, so
+ZMODEM's code is linked for banked RAM instead (`busterm.ld`, and
+`src/xfer.h` on how it reaches the other banks), and cut out as
+`BUSTERM.BNK`, stamped with the build: busterm loads only its own. `make
+room` says how much is left for the stack and fails under 512 bytes; `make
+bankcheck` fails if the bank's code picks a bank, which would take it away
+from under itself. The checks on GitHub run both, with the build (warnings
 as errors) and the formatting (`clang-format` from the SDK v23.4.0, Prettier
-3.7.4), and keep each build's `BUSTERM.PRG`.
+3.7.4), and keep each build's two files.
 
 ## Licence
 

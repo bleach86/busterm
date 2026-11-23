@@ -17,6 +17,7 @@
 #define KEY_LEFT 0x9D
 #define KEY_RIGHT 0x1D
 #define KEY_HOME 0x13
+#define KEY_END 0x04
 #define KEY_TAB 0x09
 
 /* busterm's hook on the ROM's keyboard handler, in and out */

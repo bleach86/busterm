@@ -71,7 +71,8 @@ and PETSCII), The Oasis BBS and Borderline BBS (PETSCII) and Level 29
 (ANSI).
 
 In the directory: Return dials, N adds a board, E edits one, Del removes
-it, and Tab shows the recent calls. Picking a board during a call asks before
+it (after asking), and Tab shows the recent calls. The arrows, Page Up and
+Down, Home and End move through the list. It holds up to 80 boards. Picking a board during a call asks before
 hanging up and calling it. A call made from the directory goes back to it
 when it ends; Esc closes it again to read the board's last words. After a
 PETSCII call, busterm asks first: any key opens the directory, and Esc
@@ -121,7 +122,9 @@ use them.
 busterm keeps three text files on the SD card, which a PC can edit too:
 
 - `BUSTERM.DIR`, the directory, a board a line:
-  `name|address|type|columns|calls|last called`
+  `name|address|type|columns|calls|last called`. If it has more than 80
+  boards, busterm shows the first 80 and leaves the file as it is: boards
+  can't be added, edited or removed till it's cut down on a PC.
 - `BUSTERM.RCT`, the last ten calls, newest first: `name|address|when`
 - `BUSTERM.CFG`, the settings, a `name=value` line each: `start` (directory
   or modem), `backspace` (bs or del), `echo` (off or on), `cursor` (steady

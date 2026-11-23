@@ -874,6 +874,22 @@ static uint16_t asked(uint16_t wait) {
     }
 }
 
+/* The receiver's answer to a block or an EOT: ACK, NAK, CAN (two), or
+ * TIMEOUT or STOPPED. Anything else it sends is passed over, as lrzsz's
+ * sender does: on a board, what rz says on its terminal (its progress,
+ * say) comes to the caller too, mixed in with its answers. */
+static uint16_t answer(void) {
+    for (;;) {
+        uint16_t c = get(10 * SECOND);
+        if (c == ACK || c == NAK || c > 0xFF) {
+            return c;
+        }
+        if (c == CAN && get(SECOND) == CAN) {
+            return CAN;
+        }
+    }
+}
+
 /* Block |num| (its |n| bytes at BLOCK, filled out to |of| with |pad|)
  * sent till it's ACKed, or once, streaming */
 static uint8_t send_block(uint8_t num, uint16_t n, uint16_t of, uint8_t pad) {
@@ -907,17 +923,17 @@ static uint8_t send_block(uint8_t num, uint16_t n, uint16_t of, uint8_t pad) {
             }
             return keys_get() == KEY_ESC ? SEND_STOPPED : SENT;
         }
-        c = get(10 * SECOND);
+        c = answer();
         if (c == ACK) {
             return SENT;
         }
         if (c == STOPPED) {
             return SEND_STOPPED;
         }
-        if (c == CAN && get(SECOND) == CAN) {
+        if (c == CAN) {
             return SEND_CANCELLED;
         }
-        purge(); /* a NAK, or nothing: again */
+        /* a NAK, or nothing: again */
     }
     return NOT_SENT;
 }
@@ -1017,7 +1033,10 @@ static void send(const char *unused) {
         }
     }
     file_close();
-    /* the end: EOT till it's ACKed (YMODEM's first is NAKed) */
+    /* The end: EOT till it's ACKed (YMODEM's first is NAKed). Every block
+     * was ACKed, so the board going on to its next screen instead is the
+     * receiver done too: a board can lose rz's last ACK as rz exits, and
+     * what's sent it after would go to its menu. */
     for (r = 0;; ++r) {
         uint16_t c;
         if (r == MOST_ERRORS) {
@@ -1027,12 +1046,16 @@ static void send(const char *unused) {
         }
         uart_put(EOT);
         c = get(10 * SECOND);
-        if (c == ACK) {
+        if (c == ACK || (c < 0x100 && c != NAK && c != CAN)) {
             break;
         }
         if (c == STOPPED) {
             cancel();
             tell("stopped sending", 1);
+            return;
+        }
+        if (c == CAN && get(SECOND) == CAN) {
+            tell("the board stopped", 1);
             return;
         }
     }

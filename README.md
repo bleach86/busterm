@@ -63,6 +63,10 @@ board and press Return to call it, or Esc for the modem's own prompt, where
 | Alt-Z | busterm's keys, on the status line |
 | Alt-X | Quit                               |
 
+The first time, the directory has a few boards to start with: Open Bus (ANSI
+and PETSCII), The Oasis BBS and Borderline BBS (PETSCII) and Level 29
+(ANSI).
+
 In the directory: Return dials, N adds a board, E edits one, Del removes
 it, and Tab shows the recent calls. Picking a board during a call asks before
 hanging up and calling it. A call made from the directory goes back to it

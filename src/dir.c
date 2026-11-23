@@ -111,37 +111,54 @@ static uint8_t emu_of(const char *s) {
     return EMU_ANSI;
 }
 
-void dir_load(void) {
+/* The boards a first run starts with, as BUSTERM.DIR has them */
+static const char first_boards[] = "Open Bus|bbs.tuxprint.com:8888|ANSI|80\n"
+                                   "Open Bus C64|bbs.tuxprint.com:6400|PETSCII|40\n"
+                                   "The Oasis BBS|oasisbbs.hopto.org:6400|PETSCII|40\n"
+                                   "Borderline BBS|borderlinebbs.dyndns.org:6400|PETSCII|40\n"
+                                   "Level 29|bbs.fozztexx.com:23|ANSI|80\n";
+
+/* the board on |line|, a line of BUSTERM.DIR, added */
+static void add(void) {
     char *f[6];
     uint8_t n;
+    fields(line, f, 6, &n);
+    if (n >= 2 && *f[0]) {
+        board_t *b = &dir[dir_count++];
+        copy(b->name, f[0], sizeof b->name);
+        copy(b->addr, f[1], sizeof b->addr);
+        b->emu = n > 2 ? emu_of(f[2]) : EMU_ANSI;
+        b->cols = n > 3 && number(f[3]) == 40 ? 40 : 80;
+        b->calls = n > 4 ? number(f[4]) : 0;
+        copy(b->last, n > 5 ? f[5] : "", sizeof b->last);
+    }
+}
 
+void dir_load(void) {
     dir_count = 0;
     if (file_open("BUSTERM.DIR,S,R")) {
         while (dir_count < DIR_MAX && file_line(line, sizeof line)) {
-            fields(line, f, 6, &n);
-            if (n >= 2 && *f[0]) {
-                board_t *b = &dir[dir_count++];
-                copy(b->name, f[0], sizeof b->name);
-                copy(b->addr, f[1], sizeof b->addr);
-                b->emu = n > 2 ? emu_of(f[2]) : EMU_ANSI;
-                b->cols = n > 3 && number(f[3]) == 40 ? 40 : 80;
-                b->calls = n > 4 ? number(f[4]) : 0;
-                copy(b->last, n > 5 ? f[5] : "", sizeof b->last);
-            }
+            add();
         }
         file_close();
     }
     if (!dir_count) {
-        /* a first run: a board to start with */
-        board_t *b = &dir[dir_count++];
-        copy(b->name, "Level 29", sizeof b->name);
-        copy(b->addr, "bbs.fozztexx.com:23", sizeof b->addr);
-        b->emu = EMU_ANSI, b->cols = 80, b->calls = 0, b->last[0] = 0;
+        /* a first run: boards to start with */
+        const char *s = first_boards;
+        while (*s) {
+            char *p = line;
+            while ((*p++ = *s++) != '\n') {
+            }
+            *p = 0;
+            add();
+        }
     }
 
     recent_count = 0;
     if (file_open("BUSTERM.RCT,S,R")) {
         while (recent_count < RECENT_MAX && file_line(line, sizeof line)) {
+            char *f[3];
+            uint8_t n;
             fields(line, f, 3, &n);
             if (n == 3 && *f[1]) {
                 call_t *c = &recent[recent_count++];

@@ -3,6 +3,7 @@
 #include "banks.h"
 #include "keys.h"
 #include "screen.h"
+#include "sound.h"
 #include "vera.h"
 
 /* what's under the open windows, theirs one after another, in banked RAM:
@@ -84,6 +85,7 @@ __attribute__((noinline)) uint8_t ui_open(window_t *w, uint8_t row, uint8_t col,
     /* the window and its shadow, a cell right and a row down */
     uint16_t need = (uint16_t)(height + 1) * (width + 1) * 2 + 4;
     uint8_t r, *to, bank;
+    bell_stop(); /* the window's loop won't stop it */
     if (kept + need > KEEP_BYTES) {
         return 0;
     }

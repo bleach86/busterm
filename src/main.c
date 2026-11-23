@@ -19,7 +19,7 @@
 #include "uart.h"
 #include "ui.h"
 
-#define VERSION "0.1.2"
+#define VERSION "0.1.3"
 
 /* at most this many bytes drawn before the keyboard is looked at */
 #define BURST 255
@@ -515,6 +515,7 @@ static void say(const char *s) {
 /* Files from the board, once it's sending: ZMODEM's, or XMODEM's (named
  * DOWNLOAD.BIN) or YMODEM's (named as the board has them) */
 static void receive(uint8_t how) {
+    bell_stop();
     screen_cursor_hide();
     if (!screen_petscii) {
         print("\r\x1b[K"); /* ZMODEM's start, drawn as it came, gone */
@@ -538,6 +539,7 @@ static void receive(uint8_t how) {
  * |size| - 1), what's there typed over or added to: 1 for Return, 0 for
  * Esc */
 static uint8_t status_input(const char *prompt, char *buf, uint8_t size) {
+    bell_stop();
     uint8_t fresh = 1;
     for (;;) {
         uint8_t k, n = 0;

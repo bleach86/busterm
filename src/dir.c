@@ -11,6 +11,10 @@
 uint8_t dir_count;
 uint8_t recent_count;
 
+/* BUSTERM.DIR has more boards than DIR_MAX: the first are shown, and the
+ * file is left as it is, so none of the rest are lost */
+static uint8_t dir_over;
+
 /* a line of the files, as it's read or written */
 static char line[128];
 
@@ -124,7 +128,12 @@ static void add(void) {
     uint8_t n;
     fields(line, f, 6, &n);
     if (n >= 2 && *f[0]) {
-        board_t *b = &dir[dir_count++];
+        board_t *b;
+        if (dir_count == DIR_MAX) {
+            dir_over = 1;
+            return;
+        }
+        b = &dir[dir_count++];
         copy(b->name, f[0], sizeof b->name);
         copy(b->addr, f[1], sizeof b->addr);
         b->emu = n > 2 ? emu_of(f[2]) : EMU_ANSI;
@@ -136,8 +145,9 @@ static void add(void) {
 
 void dir_load(void) {
     dir_count = 0;
+    dir_over = 0;
     if (file_open("BUSTERM.DIR,S,R")) {
-        while (dir_count < DIR_MAX && file_line(line, sizeof line)) {
+        while (!dir_over && file_line(line, sizeof line)) {
             add();
         }
         file_close();
@@ -174,7 +184,7 @@ void dir_load(void) {
 void dir_save(void) {
     char *p;
     uint8_t i;
-    if (file_create("@:BUSTERM.DIR,S,W")) {
+    if (!dir_over && file_create("@:BUSTERM.DIR,S,W")) {
         for (i = 0; i < dir_count; ++i) {
             board_t *b = &dir[i];
             p = put(line, b->name), *p++ = '|';
@@ -238,6 +248,12 @@ void dir_called(const char *name, const char *addr) {
 #define W_WIDTH 70
 #define LIST_ROW (W_ROW + 3)
 #define LIST_ROWS 17
+
+/* DIR_MAX, as text */
+#define TEXT_OF(n) #n
+#define NUMBER_TEXT(n) TEXT_OF(n)
+#define MAX_TEXT NUMBER_TEXT(DIR_MAX)
+
 #define NAME_COL (W_COL + 3)
 #define NAME_W 22
 #define ADDR_COL (W_COL + 26)
@@ -308,6 +324,13 @@ static void draw_list(uint8_t top, uint8_t picked) {
         ui_text(LIST_ROW - 1, WHEN_COL, "when", UI_DIM, 0);
     } else {
         ui_text(LIST_ROW - 2, NAME_COL, "Boards", UI_TITLE, 0);
+        /* why N, E or Del might do nothing */
+        if (dir_over) {
+            ui_text(LIST_ROW - 2, NAME_COL + 8, "first " MAX_TEXT " of BUSTERM.DIR: read only",
+                    UI_DIM, 0);
+        } else if (dir_count == DIR_MAX) {
+            ui_text(LIST_ROW - 2, NAME_COL + 8, "full: Del makes room", UI_DIM, 0);
+        }
         ui_text(LIST_ROW - 2, WHEN_COL, "Tab: recent calls", UI_DIM, 0);
         ui_text(LIST_ROW - 1, NAME_COL, "name", UI_DIM, 0);
         ui_text(LIST_ROW - 1, ADDR_COL, "address", UI_DIM, 0);
@@ -460,15 +483,42 @@ const board_t *dir_window(void) {
 
     for (;;) {
         uint8_t count = showing_recent ? recent_count : dir_count;
+        /* boards to add, edit and delete: not if BUSTERM.DIR has too many */
+        uint8_t editing = !showing_recent && !dir_over;
         uint8_t k;
+        int16_t to;
         do {
-            k = keys_get();
+            /* Page Up and Down come from busterm's key hook, as Alt's do */
+            k = keys_alt();
+            if (k != KEY_PGUP && k != KEY_PGDN) {
+                k = keys_get();
+            }
         } while (!k);
 
-        if (k == KEY_UP && picked) {
-            --picked;
-        } else if (k == KEY_DOWN && picked + 1 < count) {
-            ++picked;
+        /* a move: the row it's to, kept in the list */
+        to = picked;
+        if (k == KEY_UP) {
+            --to;
+        } else if (k == KEY_DOWN) {
+            ++to;
+        } else if (k == KEY_PGUP) {
+            to -= LIST_ROWS;
+        } else if (k == KEY_PGDN) {
+            to += LIST_ROWS;
+        } else if (k == KEY_HOME) {
+            to = 0;
+        } else if (k == KEY_END) {
+            to = DIR_MAX;
+        }
+        if (to >= count) {
+            to = count - 1;
+        }
+        if (to < 0) {
+            to = 0;
+        }
+
+        if (to != picked) {
+            picked = to;
         } else if (k == KEY_TAB) {
             showing_recent = !showing_recent;
             picked = 0;
@@ -479,19 +529,22 @@ const board_t *dir_window(void) {
         } else if (k == KEY_RETURN && count) {
             ui_close(&w);
             return showing_recent ? board_for(&recent[picked]) : &dir[picked];
-        } else if (!showing_recent && (k == 'n' || k == 'N') && dir_count < DIR_MAX) {
+        } else if (editing && (k == 'n' || k == 'N') && dir_count < DIR_MAX) {
             board_t b = {"", "", EMU_ANSI, 80, 0, ""};
             if (edit_board(&b, "New board")) {
                 dir[dir_count] = b;
                 picked = dir_count++;
                 dir_save();
             }
-        } else if (!showing_recent && (k == 'e' || k == 'E') && count) {
+        } else if (editing && (k == 'e' || k == 'E') && count) {
             if (edit_board(&dir[picked], "Edit board")) {
                 dir_save();
             }
-        } else if (!showing_recent && k == KEY_DEL && count) {
+        } else if (editing && (k == KEY_DELETE || k == KEY_DEL) && count) {
             uint8_t i;
+            if (!ui_ask("Delete this board?", dir[picked].name)) {
+                continue;
+            }
             for (i = picked; i + 1 < dir_count; ++i) {
                 dir[i] = dir[i + 1];
             }

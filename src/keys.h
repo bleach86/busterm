@@ -9,13 +9,15 @@
 
 /* the keyboard's codes, in the X16's ISO mode */
 #define KEY_RETURN 0x0D
-#define KEY_DEL 0x14 /* backspace */
+#define KEY_DEL 0x14    /* backspace */
+#define KEY_DELETE 0x19 /* Delete, the key beside Insert */
 #define KEY_ESC 0x1B
 #define KEY_UP 0x91
 #define KEY_DOWN 0x11
 #define KEY_LEFT 0x9D
 #define KEY_RIGHT 0x1D
 #define KEY_HOME 0x13
+#define KEY_END 0x04
 #define KEY_TAB 0x09
 
 /* busterm's hook on the ROM's keyboard handler, in and out */

@@ -3,6 +3,7 @@
 #include <cx16.h>
 #include <stdint.h>
 
+#include "screen.h"
 #include "settings.h"
 #include "vera.h"
 
@@ -26,6 +27,9 @@ static void voice(uint16_t freq, uint8_t volume) {
     VERA_DATA1 = (uint8_t)(freq >> 8);
     VERA_DATA1 = volume;
     VERA_DATA1 = SQUARE;
+    /* port 1 was moved: what's typed next must put it back, or it lands
+     * in the palette, just past the voice */
+    screen_forget();
 }
 
 void bell_ring(void) {
@@ -37,9 +41,15 @@ void bell_ring(void) {
     stop_at = cx16_k_rdtim() + BEEP_JIFFIES;
 }
 
-void bell_tick(void) {
-    if (sounding && cx16_k_rdtim() >= stop_at) {
+void bell_stop(void) {
+    if (sounding) {
         voice(BEEP_FREQ, 0);
         sounding = 0;
+    }
+}
+
+void bell_tick(void) {
+    if (sounding && cx16_k_rdtim() >= stop_at) {
+        bell_stop();
     }
 }

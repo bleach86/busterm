@@ -13,7 +13,7 @@
 
 #include "banks.h"
 
-#define DIR_MAX 40
+#define DIR_MAX 80
 #define RECENT_MAX 10
 #define NAME_LEN 24
 #define ADDR_LEN 48
@@ -35,6 +35,9 @@ typedef struct {
     char addr[ADDR_LEN + 1];
     char when[WHEN_LEN + 1];
 } call_t;
+
+_Static_assert(DIR_MAX * sizeof(board_t) + RECENT_MAX * sizeof(call_t) <= BANK_SIZE,
+               "the boards and the recent calls fit their bank");
 
 /* the boards and the recent calls, in banked RAM: bank BANK_DATA, which
  * busterm keeps selected */

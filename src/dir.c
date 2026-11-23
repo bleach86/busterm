@@ -490,7 +490,7 @@ const board_t *dir_window(void) {
             if (edit_board(&dir[picked], "Edit board")) {
                 dir_save();
             }
-        } else if (!showing_recent && k == KEY_DEL && count) {
+        } else if (!showing_recent && (k == KEY_DELETE || k == KEY_DEL) && count) {
             uint8_t i;
             for (i = picked; i + 1 < dir_count; ++i) {
                 dir[i] = dir[i + 1];

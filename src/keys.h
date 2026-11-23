@@ -9,7 +9,8 @@
 
 /* the keyboard's codes, in the X16's ISO mode */
 #define KEY_RETURN 0x0D
-#define KEY_DEL 0x14 /* backspace */
+#define KEY_DEL 0x14    /* backspace */
+#define KEY_DELETE 0x19 /* Delete, the key beside Insert */
 #define KEY_ESC 0x1B
 #define KEY_UP 0x91
 #define KEY_DOWN 0x11

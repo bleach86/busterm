@@ -180,6 +180,17 @@ void file_write(const uint8_t *p, uint16_t n) {
     }
 }
 
+uint8_t file_load(const char *name, uint8_t bank, void *at) {
+    uint8_t was = RAM_BANK;
+    void *end;
+    cbm_k_setlfs(LFN, SD, 0); /* to |at|, not the file's own address */
+    cbm_k_setnam(name);
+    RAM_BANK = bank;
+    end = cbm_k_load(CBM_LOAD_RAM, at);
+    RAM_BANK = was;
+    return end > at && drive_ok();
+}
+
 void file_close(void) {
     cbm_k_clrch();
     cbm_k_close(LFN);

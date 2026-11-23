@@ -2,7 +2,8 @@
 #define BANKS_H
 
 /* The X16's banked RAM: 8 KB at $A000, the bank picked at $00; every X16
- * has banks 0 to 63. Bank 0 is the ROM's. busterm keeps its data (the
+ * has banks 0 to 63. Bank 0 is the ROM's. busterm keeps ZMODEM's code in
+ * bank 2 (BUSTERM.BNK, loaded as it starts), its data (the
  * directory) in bank 3, which is left selected, the screen under its
  * windows in bank 1, a download's blocks in banks 4 and 6, what's
  * captured in bank 5, the files to send listed in bank 7, and the
@@ -17,6 +18,7 @@
 #define BANK_SIZE 8192
 
 #define BANK_WINDOWS 1
+#define BANK_CODE 2 /* ZMODEM's code (see xfer.h) */
 #define BANK_DATA 3
 #define BANK_TRANSFER 4 /* a download's block, and its CRC table */
 #define BANK_CAPTURE 5  /* what's captured, till it's written */

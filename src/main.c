@@ -19,7 +19,7 @@
 #include "uart.h"
 #include "ui.h"
 
-#define VERSION "0.1.1"
+#define VERSION "0.1.2"
 
 /* at most this many bytes drawn before the keyboard is looked at */
 #define BURST 255
@@ -223,14 +223,37 @@ static void watch(uint8_t c) {
 }
 
 /* a byte from the modem */
-/* A download the board's begun: ZMODEM's ZRQINIT ("**", ZDLE, "B00"),
- * which every ZMODEM sender starts with; or lrzsz's XMODEM, which asks
- * for the receiver in words. YMODEM's sender says nothing: Alt-R. */
+/* A transfer the board's begun. A download: ZMODEM's ZRQINIT ("**", ZDLE,
+ * "B00"), which every ZMODEM sender starts with; or lrzsz's XMODEM, which
+ * asks for the receiver in words (YMODEM's sender says nothing: Alt-R). An
+ * upload: ZMODEM's receiver's ZRINIT ("B01"); or lrzsz's YMODEM receiver,
+ * "rz waiting to receive." and then its 'C' (NAK, or 'G') where ZMODEM's
+ * would send its ZRINIT; or its XMODEM receiver, "rz: ready to receive"
+ * and the file's name, and on the next line its 'C' or NAK. */
 static const char zmodem_start[] = "**\x18"
                                    "B0";
 static const char xmodem_start[] = "receive command now.";
-static uint8_t z_at, x_at;
-static uint8_t begun; /* 1 ZMODEM, 2 XMODEM, 3 ZMODEM's receiver */
+static const char ymodem_rx[] = "waiting to receive.";
+static const char xmodem_rx[] = "ready to receive ";
+static uint8_t z_at, x_at, yr_at, xr_at;
+/* 1 ZMODEM, 2 XMODEM, 3 ZMODEM's receiver, 4 XMODEM's, 5 YMODEM's */
+static uint8_t begun;
+/* a receiver's words seen: 'y' YMODEM's, 'x' XMODEM's (its name's line
+ * going on), 'X' XMODEM's (its line ended); and the ask that came after */
+static uint8_t rx_said, rx_ask;
+
+/* |c| matched against |s| at |*at|: whether it's matched the whole */
+static uint8_t matched(const char *s, uint8_t *at, uint8_t c) {
+    if (c == (uint8_t)s[*at]) {
+        if (!s[++*at]) {
+            *at = 0;
+            return 1;
+        }
+    } else {
+        *at = c == (uint8_t)s[0];
+    }
+    return 0;
+}
 
 static void watch_downloads(uint8_t c) {
     if (!zmodem_start[z_at]) {
@@ -242,12 +265,23 @@ static void watch_downloads(uint8_t c) {
     } else {
         z_at = c != '*' ? 0 : z_at == 2 ? 2 : 1;
     }
-    if (c == (uint8_t)xmodem_start[x_at]) {
-        if (!xmodem_start[++x_at]) {
-            x_at = 0, begun = 2;
+    if (matched(xmodem_start, &x_at, c)) {
+        begun = 2;
+    }
+    if (rx_said && c != '\r' && c != '\n' && rx_said != 'x') {
+        /* the first after a receiver's words: its ask, or not it */
+        if (c == 'C' || c == 0x15 || (c == 'G' && rx_said == 'y')) {
+            begun = rx_said == 'y' ? 5 : 4, rx_ask = c;
         }
-    } else {
-        x_at = c == (uint8_t)xmodem_start[0];
+        rx_said = 0;
+    } else if (rx_said == 'x' && c == '\n') {
+        rx_said = 'X';
+    }
+    if (matched(ymodem_rx, &yr_at, c)) {
+        rx_said = 'y';
+    }
+    if (matched(xmodem_rx, &xr_at, c)) {
+        rx_said = 'x';
     }
 }
 
@@ -309,7 +343,7 @@ static void call_ended(void) {
     drain(60);
     if (screen_petscii) {
         awaiting_key = 1;
-        screen_status(" call over: a key for the directory");
+        screen_status(" call over: a key for the dir, Esc stays");
     } else {
         directory();
     }
@@ -376,6 +410,17 @@ static void echo(uint8_t k) {
 }
 
 /* the screen made ANSI's, if it's PETSCII's */
+/* The directory closed with a call still on: the screen made PETSCII
+ * again, at its width, if that's what the call's was (what was on it's
+ * gone, but what the board sends next is drawn as it should be). */
+static void back_to_call(uint8_t petscii, uint8_t cols) {
+    if (petscii && (online || calling)) {
+        screen_petscii_mode(cols);
+        petscii_reset();
+        status();
+    }
+}
+
 static void ansi_screen(void) {
     if (screen_petscii) {
         screen_ansi();
@@ -414,10 +459,13 @@ static char ask1[NAME_LEN + 12], ask2[NAME_LEN + 12];
  * picked: with a call up, it's hung up first, if that's what's wanted */
 static void directory(void) {
     const board_t *b;
+    /* the call's screen, PETSCII's, to go back to: the directory's ANSI */
+    uint8_t petscii = screen_petscii, cols = screen_cols;
     awaiting_key = 0;
     ansi_screen();
     b = dir_window();
     if (!b) {
+        back_to_call(petscii, cols);
         return;
     }
     if (online || calling) {
@@ -429,6 +477,7 @@ static void directory(void) {
         *p++ = '?';
         *p = 0;
         if (!ui_ask(ask1, ask2)) {
+            back_to_call(petscii, cols);
             return;
         }
         hang_up_now();
@@ -472,9 +521,13 @@ static void receive(uint8_t how) {
     }
     if (how == 1) {
         transfer_zmodem(say);
-    } else if (how == 3) {
+    } else if (how >= 3) {
         capture_flush(); /* the capture, if it's picked, sent whole */
-        transfer_upload(say);
+        if (how == 3) {
+            transfer_upload(say);
+        } else {
+            transfer_send(say, how == 5, rx_ask);
+        }
     } else {
         transfer_receive("DOWNLOAD.BIN", say);
     }
@@ -650,6 +703,7 @@ int main(void) {
     ansi_reset();
     uart_init(UART_DIVISOR_115200);
     keys_init();
+    transfer_init();
     dir_load();
     settings_load();
 
@@ -657,6 +711,9 @@ int main(void) {
     print("The modem is ready for commands. To call a board:\r\n\r\n");
     print("   \x1b[1;37mATDT\"bbs.example.org:23\"\x1b[0m\r\n\r\n");
     print("Alt-D is the dialling directory, Alt-Z shows busterm's keys.\r\n\r\n");
+    if (!transfer_ready()) {
+        print("\x1b[1;33mBUSTERM.BNK isn't beside busterm: ZMODEM won't work.\x1b[0m\r\n\r\n");
+    }
     online = uart_carrier();
     online_since = cx16_k_rdtim();
     status();
@@ -693,7 +750,14 @@ int main(void) {
         k = keys_get();
         if (k) {
             if (awaiting_key) {
-                directory();
+                /* Esc: the board's last words kept; any other key: the
+                 * directory */
+                if (k == KEY_ESC) {
+                    awaiting_key = 0;
+                    status();
+                } else {
+                    directory();
+                }
             } else {
                 send_key(k);
                 if (online && settings[SET_ECHO]) {

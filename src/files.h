@@ -41,4 +41,9 @@ uint8_t file_command(const char *cmd);
 /* the file closed, read or written */
 void file_close(void);
 
+/* the file |name| loaded at |at| in bank |bank| (going on into the banks
+ * after it, as the ROM's LOAD does), its first two bytes (its own load
+ * address) passed over: 1, or 0 if it couldn't be */
+uint8_t file_load(const char *name, uint8_t bank, void *at);
+
 #endif

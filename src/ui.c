@@ -79,8 +79,8 @@ static void shade(uint8_t row, uint8_t col, uint8_t n) {
     }
 }
 
-uint8_t ui_open(window_t *w, uint8_t row, uint8_t col, uint8_t height, uint8_t width,
-                const char *title) {
+__attribute__((noinline)) uint8_t ui_open(window_t *w, uint8_t row, uint8_t col, uint8_t height,
+                                          uint8_t width, const char *title) {
     /* the window and its shadow, a cell right and a row down */
     uint16_t need = (uint16_t)(height + 1) * (width + 1) * 2 + 4;
     uint8_t r, *to, bank;
@@ -127,7 +127,7 @@ uint8_t ui_open(window_t *w, uint8_t row, uint8_t col, uint8_t height, uint8_t w
     return 1;
 }
 
-void ui_close(window_t *w) {
+__attribute__((noinline)) void ui_close(window_t *w) {
     uint16_t need = (uint16_t)(w->height + 1) * (w->width + 1) * 2 + 4;
     uint8_t r, bank = RAM_BANK;
     const uint8_t *from;

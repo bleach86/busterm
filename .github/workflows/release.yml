@@ -1,5 +1,6 @@
 # A version tag, v0.1 say: busterm built and put on a GitHub release of that
-# tag, as BUSTERM.PRG and as a zip with the README and licence. The tag has
+# tag, as BUSTERM.PRG and BUSTERM.BNK, and as a zip of them with the README
+# and licence. The tag has
 # to be the version busterm says it is (VERSION in src/main.c). Run by hand
 # (Actions → Release → Run workflow), it builds them as artifacts of the run,
 # without a release.
@@ -27,16 +28,17 @@ jobs:
           fi
       - run: tools/fetch-sdk
       - run: make CFLAGS="-Oz -Wall -Wextra -Werror"
-      - run: make room
+      - run: make room bankcheck
       - name: The zip
         run: |
           version=$(sed -n 's/^#define VERSION "\(.*\)"$/\1/p' src/main.c)
-          zip "busterm-$version.zip" BUSTERM.PRG README.md LICENSE
+          zip "busterm-$version.zip" BUSTERM.PRG BUSTERM.BNK README.md LICENSE
       - uses: actions/upload-artifact@v7
         with:
           name: busterm
           path: |
             BUSTERM.PRG
+            BUSTERM.BNK
             busterm-*.zip
       # A draft first, published once its files are there; run again, the
       # release that's there already is used.
@@ -50,5 +52,5 @@ jobs:
               --title "busterm ${GITHUB_REF_NAME#v}" --generate-notes
           fi
           gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber \
-            BUSTERM.PRG busterm-*.zip
+            BUSTERM.PRG BUSTERM.BNK busterm-*.zip
           gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false

@@ -309,7 +309,7 @@ static void call_ended(void) {
     drain(60);
     if (screen_petscii) {
         awaiting_key = 1;
-        screen_status(" call over: a key for the directory");
+        screen_status(" call over: a key for the dir, Esc stays");
     } else {
         directory();
     }
@@ -376,6 +376,17 @@ static void echo(uint8_t k) {
 }
 
 /* the screen made ANSI's, if it's PETSCII's */
+/* The directory closed with a call still on: the screen made PETSCII
+ * again, at its width, if that's what the call's was (what was on it's
+ * gone, but what the board sends next is drawn as it should be). */
+static void back_to_call(uint8_t petscii, uint8_t cols) {
+    if (petscii && (online || calling)) {
+        screen_petscii_mode(cols);
+        petscii_reset();
+        status();
+    }
+}
+
 static void ansi_screen(void) {
     if (screen_petscii) {
         screen_ansi();
@@ -414,10 +425,13 @@ static char ask1[NAME_LEN + 12], ask2[NAME_LEN + 12];
  * picked: with a call up, it's hung up first, if that's what's wanted */
 static void directory(void) {
     const board_t *b;
+    /* the call's screen, PETSCII's, to go back to: the directory's ANSI */
+    uint8_t petscii = screen_petscii, cols = screen_cols;
     awaiting_key = 0;
     ansi_screen();
     b = dir_window();
     if (!b) {
+        back_to_call(petscii, cols);
         return;
     }
     if (online || calling) {
@@ -429,6 +443,7 @@ static void directory(void) {
         *p++ = '?';
         *p = 0;
         if (!ui_ask(ask1, ask2)) {
+            back_to_call(petscii, cols);
             return;
         }
         hang_up_now();
@@ -693,7 +708,14 @@ int main(void) {
         k = keys_get();
         if (k) {
             if (awaiting_key) {
-                directory();
+                /* Esc: the board's last words kept; any other key: the
+                 * directory */
+                if (k == KEY_ESC) {
+                    awaiting_key = 0;
+                    status();
+                } else {
+                    directory();
+                }
             } else {
                 send_key(k);
                 if (online && settings[SET_ECHO]) {

@@ -70,8 +70,11 @@ and PETSCII), The Oasis BBS and Borderline BBS (PETSCII) and Level 29
 In the directory: Return dials, N adds a board, E edits one, Del removes
 it, and Tab shows the recent calls. Picking a board during a call asks before
 hanging up and calling it. A call made from the directory goes back to it
-when it ends; Esc closes it again to read the board's last words. A call
-dialled at the modem's prompt goes back there.
+when it ends; Esc closes it again to read the board's last words. After a
+PETSCII call, busterm asks first: any key opens the directory, and Esc
+stays with the board's last words. A call dialled at the modem's prompt goes
+back there. Opening the directory during a PETSCII call shows it in ANSI;
+closing it puts the call's screen back to PETSCII.
 
 To download, pick the file on the board and choose ZMODEM: busterm sees it
 start and receives it, nothing to press. With YMODEM, whose sender says

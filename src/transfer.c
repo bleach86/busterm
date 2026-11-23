@@ -920,7 +920,8 @@ static void send_sub(const uint8_t *p, uint16_t n, uint8_t end, uint8_t banked) 
 static void list_files(void) {
     static char line[48];
     int16_t c;
-    uint8_t n, i, quotes, fresh, first = 1;
+    uint8_t n, i, quotes, fresh, typed, first = 1;
+    char kind[3];
     unsigned long bytes;
 
     listed = 0;
@@ -933,7 +934,7 @@ static void list_files(void) {
             break;
         }
         file_byte(), file_byte(); /* its number */
-        n = 0, quotes = 0, bytes = 0, fresh = 1;
+        n = 0, quotes = 0, bytes = 0, fresh = 1, typed = 0;
         while ((c = file_byte()) > 0) {
             /* the last run of hex digits: the size */
             uint8_t d = (uint8_t)c;
@@ -948,8 +949,9 @@ static void list_files(void) {
                 ++quotes;
             } else if (quotes == 1 && n < 40) {
                 line[n++] = (char)c;
-            } else if (quotes == 2 && c == 'D' && n) {
-                quotes = 3; /* DIR: a folder, not sent */
+            } else if (quotes == 2 && c != ' ' && typed < 3) {
+                /* its type, the word after the name: PRG, SEQ, DIR */
+                kind[typed++] = (char)c;
             }
         }
         if (c < 0) {
@@ -959,7 +961,9 @@ static void list_files(void) {
             first = 0; /* the card's own name */
             continue;
         }
-        if (quotes != 2 || !n || listed == MOST_FILES) {
+        /* a folder (DIR) isn't sent; nor is a file with no name */
+        if (quotes != 2 || !n || listed == MOST_FILES ||
+            (typed == 3 && kind[0] == 'D' && kind[1] == 'I' && kind[2] == 'R')) {
             continue;
         }
         line[n] = 0;

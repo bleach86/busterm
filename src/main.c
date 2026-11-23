@@ -19,7 +19,7 @@
 #include "uart.h"
 #include "ui.h"
 
-#define VERSION "0.1.1"
+#define VERSION "0.1.2"
 
 /* at most this many bytes drawn before the keyboard is looked at */
 #define BURST 255
